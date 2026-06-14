@@ -124,3 +124,41 @@ body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--chalk-dust); }
 ::-webkit-scrollbar-thumb { background: var(--board-light); border-radius: 3px; }
+
+@media print {
+  @page { size: A4 landscape; margin: 8mm; }
+  body > * { display: none !important; }
+  #print-root { display: block !important; }
+  .print-page {
+    page-break-after: always;
+    break-after: page;
+    width: 281mm;
+    margin: 0 auto;
+    padding-top: 4mm;
+  }
+  .print-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .cut-line {
+    border-top: 1px solid #CCC;
+    margin: 2mm auto;
+    width: 243mm;
+    position: relative;
+  }
+  .cut-label {
+    position: absolute;
+    right: -18mm;
+    top: -7px;
+    font-size: 8px;
+    color: #BBB;
+    white-space: nowrap;
+  }
+  .fold-guide {
+    font-size: 8px;
+    color: #999;
+    text-align: center;
+    margin: 3mm 0 1mm;
+    letter-spacing: 1px;
+  }
+}

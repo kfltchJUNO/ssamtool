@@ -36,7 +36,14 @@ function Avatar({ name, size = 48 }: { name: string; size?: number }) {
   );
 }
 
-export default function RandomPicker() {
+interface RandomPickerProps {
+  preloadedStudents?: string[];
+  preloadedLabel?: string;
+  onOpenClassPanel?: () => void;
+  isLoggedIn?: boolean;
+}
+
+export default function RandomPicker({ preloadedStudents = [], preloadedLabel = "", onOpenClassPanel, isLoggedIn }: RandomPickerProps) {
   const [namesInput, setNamesInput] = useState("");
   const [nameList, setNameList] = useState<string[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
@@ -64,6 +71,16 @@ export default function RandomPicker() {
     // Load nothing on mount; user clicks "목록 적용" explicitly
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 외부에서 반 불러오기
+  useEffect(() => {
+    if (preloadedStudents.length > 0) {
+      setNamesInput(preloadedStudents.join("\n"));
+      setNameList(preloadedStudents);
+      setPicked([]);
+      setCurrent("");
+    }
+  }, [preloadedStudents]);
 
   const pickRandom = useCallback(() => {
     if (pool.length === 0) return;
@@ -126,13 +143,23 @@ export default function RandomPicker() {
       <div className="bg-white rounded-xl border border-[#E8E0D0] p-5 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold text-[#1B4332] text-lg">랜덤 뽑기</h2>
-          <button
-            onClick={() => { setNamesInput(EXAMPLE); }}
-            className="text-xs text-[#2D6A4F] underline underline-offset-2 hover:text-[#1B4332]"
-          >
-            예시 불러오기
-          </button>
+          <div className="flex items-center gap-3">
+            {isLoggedIn && onOpenClassPanel && (
+              <button onClick={onOpenClassPanel} className="flex items-center gap-1 text-xs text-[#1B4332] font-semibold bg-[#F0FFF4] border border-[#9AE6B4] px-2.5 py-1 rounded-lg hover:bg-[#D4EDDA] transition-colors">
+                👥 반 불러오기
+              </button>
+            )}
+            <button onClick={() => { setNamesInput(EXAMPLE); }} className="text-xs text-[#2D6A4F] underline underline-offset-2 hover:text-[#1B4332]">
+              예시
+            </button>
+          </div>
         </div>
+
+        {preloadedLabel && (
+          <div className="text-xs text-[#2D6A4F] bg-[#F0FFF4] px-3 py-1.5 rounded-lg border border-[#9AE6B4] mb-3">
+            ✅ {preloadedLabel} · {preloadedStudents.length}명
+          </div>
+        )}
 
         <div className="flex gap-3">
           <textarea
