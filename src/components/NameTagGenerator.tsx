@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
+import GateBanner from "@/components/GateBanner";
 
 // ── 등급 ──────────────────────────────────────────────────────────
 type UserGrade = "guest" | "free" | "chalk";
@@ -50,6 +52,8 @@ interface NameTagProps {
 }
 
 export default function NameTagGenerator({ preloadedStudents = [], preloadedLabel = "", onOpenClassPanel, isLoggedIn }: NameTagProps) {
+  const { user } = useAuth();
+  const isGuest = !user;
   const [grade,      setGrade]      = useState<UserGrade>("guest");
   const [namesInput, setNamesInput] = useState("");
   const [entries,    setEntries]    = useState<NameEntry[]>([]);
@@ -203,10 +207,18 @@ export default function NameTagGenerator({ preloadedStudents = [], preloadedLabe
                 <h3 className="font-bold text-[#1B4332]">미리보기</h3>
                 <p className="text-xs text-[#9A9A9A] mt-0.5">{entries.length}개 · A4 세로 1장 = 이름표 1개 · 2번 접기</p>
               </div>
-              <button onClick={() => printEntries(entries, currentFont.css)}
-                className="px-4 py-2 bg-[#F2C94C] text-[#1B4332] text-sm font-bold rounded-lg hover:bg-[#EAB800] transition-colors">
-                🖨️ 인쇄
-              </button>
+              {isGuest ? (
+                <GateBanner
+                  reason="login"
+                  message="인쇄는 로그인 후 사용할 수 있어요."
+                  onLogin={() => document.dispatchEvent(new CustomEvent("ssamtool:openLogin"))}
+                />
+              ) : (
+                <button onClick={() => printEntries(entries, currentFont.css)}
+                  className="px-4 py-2 bg-[#F2C94C] text-[#1B4332] text-sm font-bold rounded-lg hover:bg-[#EAB800] transition-colors">
+                  🖨️ 인쇄
+                </button>
+              )}
             </div>
 
             {/* 화면용 미리보기 카드 목록 */}
