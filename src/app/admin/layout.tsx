@@ -8,8 +8,9 @@ import { useAuth } from "@/context/AuthContext";
 const NAV = [
   { href: "/admin",            icon: "📊", label: "대시보드" },
   { href: "/admin/users",      icon: "👤", label: "유저 관리" },
-  { href: "/admin/chalk-logs", icon: "✏️", label: "분필 로그" },
+  { href: "/admin/chalk-logs", icon: "🖍️", label: "분필 로그" },
   { href: "/admin/feedbacks",  icon: "💬", label: "피드백" },
+  { href: "/admin/coupang",    icon: "🛒", label: "쿠팡 광고" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

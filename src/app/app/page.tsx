@@ -14,7 +14,7 @@ import SpeakingOrder from "@/components/SpeakingOrder";
 import StudentMemo from "@/components/MemoSheet";
 import FeedbackButton from "@/components/FeedbackButton";
 import InAppBrowserBanner from "@/components/InAppBrowserBanner";
-import { AdSense, CoupangBanner, AppPromoBanner } from "@/components/ads/AdBanners";
+import { AdSense, CoupangBanner, CoupangSearchWidget, KakaoAdFitResponsive, AppPromoBar } from "@/components/ads/AdBanners";
 import { useAuth } from "@/context/AuthContext";
 import { signOut } from "@/lib/auth";
 
@@ -30,13 +30,6 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "memo",     label: "메모",     icon: "📝" },
 ];
 
-// 탭별 교차 홍보 앱
-const TAB_PROMO: Partial<Record<Tab, "sori"|"wooriban"|"iam">> = {
-  speaking: "sori",
-  memo:     "wooriban",
-  nametag:  "iam",
-};
-
 export default function AppPage() {
   const [activeTab,      setActiveTab]      = useState<Tab>("nametag");
   const [showLogin,      setShowLogin]      = useState(false);
@@ -47,7 +40,9 @@ export default function AppPage() {
   const [loadedLabel,    setLoadedLabel]    = useState("");
   const [loadedGroupId,  setLoadedGroupId]  = useState("");
 
-  const { user, chalk, admin, loading } = useAuth();
+  const [showChalkModal, setShowChalkModal] = useState(false);
+
+  const { user, userDoc, chalk, chalkPaid, chalkEvent, admin, loading } = useAuth();
 
   // 전역 로그인 이벤트 수신 (GateBanner에서 발생)
   useEffect(() => {
@@ -72,7 +67,6 @@ export default function AppPage() {
     isLoggedIn:        !!user,
   };
 
-  const promoApp = TAB_PROMO[activeTab];
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -97,40 +91,76 @@ export default function AppPage() {
               </button>
             )}
 
+            {/* 관리자 버튼 — 관리자 계정 로그인 시만 표시 */}
+            {admin && !loading && (
+              <a href="/admin"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors">
+                🛠️<span className="hidden sm:inline">관리자</span>
+              </a>
+            )}
+
             {loading ? (
-              <div className="w-16 h-8 bg-[#2D6A4F] rounded-lg animate-pulse" />
+              <div className="w-24 h-8 bg-[#2D6A4F] rounded-lg animate-pulse" />
             ) : user ? (
-              <div className="relative">
-                <button onClick={() => setUserMenuOpen(v => !v)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#2D6A4F] hover:border-[#A8D5B7] transition-colors">
-                  {user.photoURL
-                    ? <Image src={user.photoURL} alt="프로필" width={22} height={22} className="rounded-full" />
-                    : <div className="w-5.5 h-5.5 rounded-full bg-[#F2C94C] flex items-center justify-center text-[#1B4332] text-[10px] font-bold w-6 h-6">
-                        {(user.displayName ?? user.email ?? "?")[0].toUpperCase()}
-                      </div>
-                  }
-                  <span className="chalk-badge text-[10px] px-1.5 py-0.5">🖍️ {chalk}</span>
-                  {admin && <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded font-bold hidden sm:inline">관리자</span>}
+              <div className="flex items-center gap-2">
+
+                {/* 분필 잔액 — 클릭하면 모달 */}
+                <button
+                  onClick={() => setShowChalkModal(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#2D6A4F] bg-[#1B4332] hover:border-[#A8D5B7] transition-colors"
+                >
+                  {chalkPaid > 0 && <span className="text-[11px] font-bold text-[#A8D5B7]">🖍️ {chalkPaid}</span>}
+                  {chalkPaid > 0 && chalkEvent > 0 && <span className="text-[#2D6A4F] text-xs">+</span>}
+                  {chalkEvent > 0 && <span className="text-[11px] font-bold text-[#F9A825]">🖍️ {chalkEvent}</span>}
+                  {chalk === 0 && <span className="text-[11px] text-[#A8D5B7]">🖍️ 0</span>}
+                  <Link href="/shop" onClick={e => e.stopPropagation()}
+                    className="ml-1 text-[10px] font-bold bg-[#F2C94C] text-[#1B4332] px-1.5 py-0.5 rounded hover:bg-[#EAB800] transition-colors whitespace-nowrap">
+                    + 충전
+                  </Link>
                 </button>
 
-                {userMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-lg border border-[#E8E0D0] py-1 z-40">
-                    <div className="px-4 py-2 border-b border-[#E8E0D0]">
-                      <p className="text-xs font-semibold text-[#1B4332] truncate">{user.displayName ?? "사용자"}</p>
-                      <p className="text-[11px] text-[#9A9A9A] truncate">{user.email}</p>
+                {/* 유저 메뉴 */}
+                <div className="relative">
+                  <button onClick={() => setUserMenuOpen(v => !v)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#2D6A4F] hover:border-[#A8D5B7] transition-colors">
+                    {user.photoURL
+                      ? <Image src={user.photoURL} alt="프로필" width={22} height={22} className="rounded-full" />
+                      : <div className="w-6 h-6 rounded-full bg-[#F2C94C] flex items-center justify-center text-[#1B4332] text-[10px] font-bold">
+                          {(user.displayName ?? user.email ?? "?")[0].toUpperCase()}
+                        </div>
+                    }
+                    <span className="text-[#A8D5B7] text-xs">▾</span>
+                  </button>
+
+                  {userMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-[#E8E0D0] overflow-hidden z-50">
+                      {/* 유저 정보 */}
+                      <div className="px-4 py-3 bg-[#F9F9F9] border-b border-[#E8E0D0]">
+                        <p className="text-xs font-bold text-[#1B4332] truncate">{user.displayName ?? "사용자"}</p>
+                        <p className="text-[11px] text-[#9A9A9A] truncate">{user.email}</p>
+                      </div>
+                      <button onClick={() => { setClassPanelOpen(true); setUserMenuOpen(false); }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-[#2D2D2D] hover:bg-[#F5F0E8] transition-colors flex items-center gap-2">
+                        👥 <span>내 반 관리</span>
+                      </button>
+                      <Link href="/shop" onClick={() => setUserMenuOpen(false)}
+                        className="block px-4 py-2.5 text-sm text-[#2D2D2D] hover:bg-[#F5F0E8] transition-colors flex items-center gap-2">
+                        🖍️ <span>분필 충전</span>
+                      </Link>
+                      {admin && (
+                        <Link href="/admin" onClick={() => setUserMenuOpen(false)}
+                          className="block px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2">
+                          🛠️ <span>관리자 페이지</span>
+                        </Link>
+                      )}
+                      {/* 로그아웃 */}
+                      <button onClick={handleSignOut}
+                        className="w-full text-left px-4 py-2.5 text-sm font-bold text-[#C53030] hover:bg-[#FFF5F5] transition-colors flex items-center gap-2 border-t border-[#E8E0D0]">
+                        🚪 <span>로그아웃</span>
+                      </button>
                     </div>
-                    <div className="px-4 py-2 border-b border-[#E8E0D0] flex items-center justify-between">
-                      <p className="text-[11px] text-[#4A4A4A]">분필 <span className="font-bold text-[#1B4332]">{chalk}개</span></p>
-                      <Link href="/shop" onClick={() => setUserMenuOpen(false)} className="text-[11px] text-[#F9A825] font-bold hover:underline">🖍️ 충전</Link>
-                    </div>
-                    <button onClick={() => { setClassPanelOpen(true); setUserMenuOpen(false); }} className="w-full text-left px-4 py-2 text-sm text-[#4A4A4A] hover:bg-[#F5F0E8]">👥 내 반 관리</button>
-                    <Link href="/shop" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2 text-sm text-[#4A4A4A] hover:bg-[#F5F0E8]">🖍️ 분필 충전</Link>
-                    {admin && <Link href="/admin" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-semibold">🛠️ 관리자 페이지</Link>}
-                    <div className="border-t border-[#E8E0D0] mt-1 pt-1">
-                      <button onClick={handleSignOut} className="w-full text-left px-4 py-2 text-sm text-[#4A4A4A] hover:bg-[#F5F0E8]">로그아웃</button>
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ) : (
               <button onClick={() => setShowLogin(true)}
@@ -139,6 +169,11 @@ export default function AppPage() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* 앱 홍보 바 — 탭 위, 헤더 하단 */}
+        <div className="max-w-5xl mx-auto px-4 py-1.5 border-t border-[#2D6A4F]">
+          <AppPromoBar />
         </div>
 
         {/* 탭 */}
@@ -171,27 +206,36 @@ export default function AppPage() {
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-5">
-        {/* 상단 애드센스 — 모든 사용자에게 노출 */}
-        <AdSense slot="1234567890" className="mb-4 rounded-xl overflow-hidden" />
+        {/* 본문 + 우측 위젯 */}
+        <div className="flex gap-4 items-start">
+          {/* 탭 콘텐츠 */}
+          <div className="flex-1 min-w-0">
+            {activeTab === "nametag"  && <NameTagGenerator  {...sharedProps} />}
+            {activeTab === "timer"    && <ClassTimer />}
+            {activeTab === "random"   && <RandomPicker      {...sharedProps} />}
+            {activeTab === "seating"  && <SeatingChart      {...sharedProps} />}
+            {activeTab === "group"    && <GroupDivider      {...sharedProps} />}
+            {activeTab === "speaking" && <SpeakingOrder     {...sharedProps} />}
+            {activeTab === "memo"     && <StudentMemo       {...sharedProps} preloadedGroupId={loadedGroupId} />}
+          </div>
 
-        {activeTab === "nametag"  && <NameTagGenerator  {...sharedProps} />}
-        {activeTab === "timer"    && <ClassTimer />}
-        {activeTab === "random"   && <RandomPicker      {...sharedProps} />}
-        {activeTab === "seating"  && <SeatingChart      {...sharedProps} />}
-        {activeTab === "group"    && <GroupDivider      {...sharedProps} />}
-        {activeTab === "speaking" && <SpeakingOrder     {...sharedProps} />}
-        {activeTab === "memo"     && <StudentMemo       {...sharedProps} preloadedGroupId={loadedGroupId} />}
+          {/* 우측 사이드 (PC만) */}
+          <div className="hidden lg:flex flex-col gap-2 w-52 flex-shrink-0 sticky top-4">
+            <CoupangSearchWidget />
+            <CoupangBanner />
+          </div>
+        </div>
 
-        {/* 탭 하단 광고 영역 — 모든 사용자에게 노출 */}
-        <div className="mt-6 space-y-3">
-          {/* 카카오 애드핏 */}
-          {/* <KakaoAdFit unit="DAN-XXXXXXXXXXXXXXXX" width={320} height={50} /> */}
-
-          {/* 쿠팡 파트너스 */}
-          <CoupangBanner />
-
-          {/* 교차 홍보 */}
-          {promoApp && <AppPromoBanner app={promoApp} />}
+        {/* 하단 광고 — 애드센스 + 카카오 + 쿠팡 순서로 한 줄씩 */}
+        <div className="mt-5 space-y-2">
+          <AdSense className="rounded-xl overflow-hidden" />
+          <KakaoAdFitResponsive />
+          <div className="lg:hidden">
+            <CoupangSearchWidget />
+            <div className="mt-2">
+              <CoupangBanner />
+            </div>
+          </div>
         </div>
       </main>
 
@@ -207,8 +251,81 @@ export default function AppPage() {
 
       {showLogin    && <LoginModal onClose={() => setShowLogin(false)} />}
       <ClassPanel open={classPanelOpen} onClose={() => setClassPanelOpen(false)} onSelectGroup={handleSelectGroup} />
-      {userMenuOpen && <div className="fixed inset-0 z-30" onClick={() => setUserMenuOpen(false)} />}
+      {userMenuOpen && <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />}
       <FeedbackButton />
+
+      {/* 분필 현황 모달 */}
+      {showChalkModal && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setShowChalkModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="chalk-header px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="chalk-text font-bold text-lg">🖍️ 분필 현황</h2>
+                <p className="text-[#A8D5B7] text-xs mt-0.5">{user.displayName ?? user.email}</p>
+              </div>
+              <button onClick={() => setShowChalkModal(false)} className="text-[#A8D5B7] hover:text-white text-2xl leading-none">×</button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* 결제 분필 */}
+              <div className="flex items-center justify-between p-4 bg-[#F0FFF4] rounded-xl border border-[#9AE6B4]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#1B4332] rounded-xl flex items-center justify-center text-white text-lg">🖍️</div>
+                  <div>
+                    <p className="font-bold text-sm text-[#1B4332]">결제 분필</p>
+                    <p className="text-[11px] text-[#2D6A4F]">영구 사용 가능</p>
+                  </div>
+                </div>
+                <span className="text-2xl font-black text-[#1B4332]">{chalkPaid}</span>
+              </div>
+
+              {/* 이벤트 분필 */}
+              <div className="flex items-center justify-between p-4 bg-[#FFF8E1] rounded-xl border border-[#F9A825]">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#F9A825] rounded-xl flex items-center justify-center text-white text-lg">🖍️</div>
+                  <div>
+                    <p className="font-bold text-sm text-[#92630A]">이벤트 분필</p>
+                    <p className="text-[11px] text-[#92630A]">만료일 있음</p>
+                  </div>
+                </div>
+                <span className="text-2xl font-black text-[#F9A825]">{chalkEvent}</span>
+              </div>
+
+              {/* 이벤트 분필 상세 (만료일별) */}
+              {userDoc?.chalkEvents && userDoc.chalkEvents.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-[#4A4A4A]">이벤트 분필 상세</p>
+                  {userDoc.chalkEvents
+                    .filter(e => e.expiresAt?.toDate() > new Date())
+                    .map((e, i) => (
+                      <div key={i} className="flex items-center justify-between px-3 py-2 bg-[#F9F9F9] rounded-lg text-xs">
+                        <span className="text-[#F9A825] font-semibold">🖍️ {e.amount}개</span>
+                        <span className="text-[#9A9A9A]">
+                          ~{e.expiresAt.toDate().toLocaleDateString("ko-KR")} 만료
+                        </span>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              {/* 합계 */}
+              <div className="flex items-center justify-between pt-3 border-t border-[#E8E0D0]">
+                <span className="font-bold text-[#1B4332]">합계</span>
+                <span className="text-2xl font-black text-[#1B4332]">{chalk}개</span>
+              </div>
+
+              <Link href="/shop" onClick={() => setShowChalkModal(false)}
+                className="block w-full py-3 bg-[#1B4332] text-white font-bold text-sm text-center rounded-xl hover:bg-[#2D6A4F] transition-colors">
+                🖍️ 분필 충전하기
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
