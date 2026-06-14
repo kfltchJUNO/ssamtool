@@ -11,7 +11,7 @@ import ClassPanel from "@/components/ClassPanel";
 import SeatingChart from "@/components/SeatingChart";
 import GroupDivider from "@/components/GroupDivider";
 import SpeakingOrder from "@/components/SpeakingOrder";
-import StudentMemo from "@/components/StudentMemo";
+import StudentMemo from "@/components/MemoSheet";
 import FeedbackButton from "@/components/FeedbackButton";
 import InAppBrowserBanner from "@/components/InAppBrowserBanner";
 import { AdSense, CoupangBanner, AppPromoBanner } from "@/components/ads/AdBanners";
