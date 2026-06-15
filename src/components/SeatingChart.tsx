@@ -205,8 +205,10 @@ export default function SeatingChart({
     let cells = "";
     for (let r = 0; r <= rows; r++) {
       for (let c = 0; c < cols; c++) {
+        // 학생 입장: 좌우(x) + 상하(y) 모두 반전
         const displayC = mirror ? (cols - 1 - c) : c;
-        const el = elements.find(e => e.x === displayC && e.y === r);
+        const displayR = mirror ? (rows - r)     : r;
+        const el = elements.find(e => e.x === displayC && e.y === displayR);
         const px = c * (cW + gap);
         const py = r * (cH + gap);
 
@@ -345,7 +347,7 @@ export default function SeatingChart({
             {(["edit","assign"] as Mode[]).map(m => (
               <button key={m} onClick={() => setMode(m)}
                 className={`px-4 py-2 text-sm font-semibold transition-colors ${mode===m ? "bg-[#1B4332] text-white" : "text-[#4A4A4A] hover:bg-[#F5F0E8]"}`}>
-                {m === "edit" ? "✏️ 교실 편집" : "👤 학생 배치"}
+                {m === "edit" ? "🖍️ 교실 편집" : "👤 학생 배치"}
               </button>
             ))}
           </div>

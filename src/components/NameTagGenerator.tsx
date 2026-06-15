@@ -205,7 +205,7 @@ export default function NameTagGenerator({ preloadedStudents = [], preloadedLabe
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div>
                 <h3 className="font-bold text-[#1B4332]">미리보기</h3>
-                <p className="text-xs text-[#9A9A9A] mt-0.5">{entries.length}개 · A4 세로 1장 = 이름표 1개 · 2번 접기</p>
+                <p className="text-xs text-[#9A9A9A] mt-0.5">{entries.length}개 · A4 가로 1장에 2개 · 개별 인쇄 가능</p>
               </div>
               {isGuest ? (
                 <GateBanner
@@ -216,7 +216,7 @@ export default function NameTagGenerator({ preloadedStudents = [], preloadedLabe
               ) : (
                 <button onClick={() => printEntries(entries, currentFont.css)}
                   className="px-4 py-2 bg-[#F2C94C] text-[#1B4332] text-sm font-bold rounded-lg hover:bg-[#EAB800] transition-colors">
-                  🖨️ 인쇄
+                  🖨️ 전체 인쇄
                 </button>
               )}
             </div>
@@ -225,7 +225,9 @@ export default function NameTagGenerator({ preloadedStudents = [], preloadedLabe
             <div className="space-y-4">
               {entries.map(entry => (
                 <ScreenCard key={entry.id} entry={entry} fontCss={currentFont.css}
-                  onReshuffle={(emojiMode === "set" || emojiMode === "random") ? () => reshuffleEmoji(entry.id) : undefined} />
+                  onReshuffle={(emojiMode === "set" || emojiMode === "random") ? () => reshuffleEmoji(entry.id) : undefined}
+                  onPrint={isGuest ? undefined : () => printEntries([entry], currentFont.css)}
+                />
               ))}
             </div>
           </div>
@@ -236,123 +238,134 @@ export default function NameTagGenerator({ preloadedStudents = [], preloadedLabe
 }
 
 // ── 화면 미리보기 카드 ────────────────────────────────────────────
-function ScreenCard({ entry, fontCss, onReshuffle }: {
-  entry: NameEntry; fontCss: string; onReshuffle?: () => void;
+function ScreenCard({ entry, fontCss, onReshuffle, onPrint }: {
+  entry: NameEntry; fontCss: string; onReshuffle?: () => void; onPrint?: () => void;
 }) {
   return (
     <div className="border border-[#E8E0D0] rounded-xl overflow-hidden bg-white">
       {/* 헤더 */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#E8E0D0] bg-[#FAFAFA]">
         <span className="text-xs font-semibold text-[#9A9A9A]">이름표 — {entry.name}</span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {onReshuffle && (
             <button onClick={onReshuffle} className="text-xs text-[#2D6A4F] underline underline-offset-2">이모지 재배정</button>
+          )}
+          {onPrint && (
+            <button onClick={onPrint}
+              className="px-2.5 py-1 bg-[#F2C94C] text-[#1B4332] text-[11px] font-bold rounded-lg hover:bg-[#EAB800] transition-colors">
+              🖨️ 개별 인쇄
+            </button>
           )}
         </div>
       </div>
 
-      {/* 세로 방향 3패널 미리보기 */}
-      <div className="flex flex-col items-center py-4 gap-0" style={{ fontFamily: fontCss }}>
+      {/* 가로 방향 미리보기 */}
+      <div className="flex flex-row items-stretch py-3 gap-0 overflow-x-auto" style={{ fontFamily: fontCss }}>
 
-        {/* 앞면 */}
-        <div className="flex items-center justify-center bg-white"
-          style={{ width: 220, height: 100 }}>
-          <div className="flex flex-col items-center gap-1">
-            {entry.emoji && <span style={{ fontSize: 24 }}>{entry.emoji}</span>}
-            <span style={{ fontSize: 30, fontWeight: 900, color: "#111", letterSpacing: "0.04em" }}>
+        {/* 앞면 (180도 회전) */}
+        <div className="flex items-center justify-center bg-white flex-shrink-0"
+          style={{ width: 160, height: 80, transform: "rotate(180deg)" }}>
+          <div className="flex flex-col items-center gap-0.5">
+            {entry.emoji && <span style={{ fontSize: 18 }}>{entry.emoji}</span>}
+            <span style={{ fontSize: 22, fontWeight: 900, color: "#111", letterSpacing: "0.04em" }}>
               {entry.name}
             </span>
           </div>
         </div>
 
         {/* 접는선 1 */}
-        <div className="flex items-center gap-2" style={{ width: 220 }}>
-          <div className="flex-1 border-t border-dashed border-gray-300" />
-          <span className="text-[9px] text-gray-300 whitespace-nowrap">안쪽 접기</span>
+        <div className="flex flex-col items-center justify-center flex-shrink-0" style={{ width: 24 }}>
+          <div className="h-full border-l border-dashed border-gray-300" />
+          <span className="text-[8px] text-gray-300" style={{ writingMode: "vertical-rl" }}>안쪽</span>
         </div>
 
         {/* 뒷면 */}
-        <div className="flex items-center justify-center bg-[#FAFAFA]"
-          style={{ width: 220, height: 100 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, color: "#555", letterSpacing: "0.04em" }}>
+        <div className="flex items-center justify-center bg-[#FAFAFA] flex-shrink-0"
+          style={{ width: 160, height: 80 }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "#555", letterSpacing: "0.04em" }}>
             {entry.name}
           </span>
         </div>
 
         {/* 접는선 2 */}
-        <div className="flex items-center gap-2" style={{ width: 220 }}>
-          <div className="flex-1 border-t border-dashed border-gray-300" />
-          <span className="text-[9px] text-gray-300 whitespace-nowrap">바깥 접기</span>
+        <div className="flex flex-col items-center justify-center flex-shrink-0" style={{ width: 24 }}>
+          <div className="h-full border-l border-dashed border-gray-300" />
+          <span className="text-[8px] text-gray-300" style={{ writingMode: "vertical-rl" }}>바깥</span>
         </div>
 
         {/* 지지대 */}
-        <div className="flex items-center justify-center bg-[#F5F5F5]"
-          style={{ width: 220, height: 18 }}>
-          <span className="text-[9px] text-gray-300">SSAMTOOL</span>
+        <div className="flex items-center justify-center bg-[#F5F5F5] flex-shrink-0"
+          style={{ width: 28, height: 80 }}>
+          <span className="text-[7px] text-gray-300" style={{ writingMode: "vertical-rl" }}>SSAMTOOL</span>
         </div>
-
-        <p className="text-[10px] text-gray-400 mt-2">점선을 접으면 앞에서 볼 때 가로 명패 완성</p>
       </div>
+
+      <p className="text-[10px] text-gray-400 mt-1 text-center">A4 가로 1장에 2개 · 세로 접는선을 접으면 가로 명패 완성</p>
     </div>
   );
 }
 
 // ── iframe 인쇄 함수 ─────────────────────────────────────────────
-// Next.js DOM 구조와 무관하게 독립 iframe으로 인쇄
+// A4 가로: 한 장에 이름표 2개 (위/아래)
+// 각 이름표: 앞면(120mm) | 뒷면(120mm) | 지지대(25mm) 가로 배치
+// 이름표 높이: (210mm - 여백20mm) / 2 = 95mm
 function buildCardHTML(entry: NameEntry, fontCss: string): string {
   const emojiBlock = entry.emoji
-    ? `<div style="font-size:56px;line-height:1;margin-bottom:8px;">${entry.emoji}</div>`
+    ? `<div style="font-size:36px;line-height:1;margin-bottom:6px;">${entry.emoji}</div>`
     : "";
 
   return `
     <div style="
-      width:190mm;
-      page-break-after:always;
-      break-after:page;
+      display:flex; flex-direction:row;
+      width:265mm; height:85mm;
       font-family:${fontCss};
+      break-inside:avoid;
     ">
-      <!-- 앞면 120mm -->
+      <!-- 앞면 120mm (180도 회전) -->
       <div style="
-        width:190mm; height:120mm; box-sizing:border-box;
+        width:120mm; height:85mm; box-sizing:border-box;
         display:flex; flex-direction:column;
-        align-items:center; justify-content:center; gap:10px;
+        align-items:center; justify-content:center; gap:6px;
         transform:rotate(180deg);
+        flex-shrink:0;
       ">
         ${emojiBlock}
         <div style="
-          font-size:72px; font-weight:900; color:#111;
+          font-size:52px; font-weight:900; color:#111;
           letter-spacing:0.06em; line-height:1.1;
           text-align:center; word-break:keep-all;
         ">${entry.name}</div>
       </div>
 
-      <!-- 접는선 1: 안쪽 접기 -->
-      <div style="width:190mm; height:0; border-top:1.5px dashed #AAAAAA; position:relative;">
-        <span style="position:absolute;right:0;top:3px;font-size:7px;color:#BBBBBB;letter-spacing:0.5px;">안쪽 접기</span>
+      <!-- 접는선 1: 안쪽 접기 (세로선) -->
+      <div style="width:0; height:85mm; border-left:1.5px dashed #AAAAAA; position:relative; flex-shrink:0;">
+        <span style="position:absolute;bottom:2px;left:3px;font-size:7px;color:#BBBBBB;writing-mode:vertical-rl;">안쪽 접기</span>
       </div>
 
       <!-- 뒷면 120mm -->
       <div style="
-        width:190mm; height:120mm; box-sizing:border-box;
+        width:120mm; height:85mm; box-sizing:border-box;
         display:flex; align-items:center; justify-content:center;
+        flex-shrink:0;
       ">
         <div style="
-          font-size:48px; font-weight:700; color:#333;
+          font-size:40px; font-weight:700; color:#333;
           letter-spacing:0.06em; text-align:center;
         ">${entry.name}</div>
       </div>
 
-      <!-- 접는선 2: 바깥 접기 -->
-      <div style="width:190mm; height:0; border-top:1.5px dashed #AAAAAA; position:relative;">
-        <span style="position:absolute;right:0;top:3px;font-size:7px;color:#BBBBBB;letter-spacing:0.5px;">바깥 접기</span>
+      <!-- 접는선 2: 바깥 접기 (세로선) -->
+      <div style="width:0; height:85mm; border-left:1.5px dashed #AAAAAA; position:relative; flex-shrink:0;">
+        <span style="position:absolute;bottom:2px;left:3px;font-size:7px;color:#BBBBBB;writing-mode:vertical-rl;">바깥 접기</span>
       </div>
 
       <!-- 지지대 25mm -->
       <div style="
-        width:190mm; height:25mm; box-sizing:border-box;
+        width:25mm; height:85mm; box-sizing:border-box;
         display:flex; align-items:center; justify-content:center;
+        flex-shrink:0;
       ">
-        <span style="font-size:8px;color:#CCCCCC;letter-spacing:2px;">SSAMTOOL</span>
+        <span style="font-size:7px;color:#CCCCCC;writing-mode:vertical-rl;letter-spacing:2px;">SSAMTOOL</span>
       </div>
     </div>
   `;
@@ -361,23 +374,46 @@ function buildCardHTML(entry: NameEntry, fontCss: string): string {
 function printEntries(entries: NameEntry[], fontCss: string) {
   if (!entries.length) return;
 
-  const cardsHTML = entries.map(e => buildCardHTML(e, fontCss)).join("");
+  // 2개씩 묶어서 페이지 구성
+  const pages: NameEntry[][] = [];
+  for (let i = 0; i < entries.length; i += 2) {
+    pages.push(entries.slice(i, i + 2));
+  }
+
+  const pagesHTML = pages.map((page, pi) => `
+    <div style="
+      page-break-after: ${pi < pages.length - 1 ? "always" : "auto"};
+      break-after: ${pi < pages.length - 1 ? "page" : "auto"};
+      display:flex; flex-direction:column; gap:0;
+      padding: 5mm 15mm;
+    ">
+      ${page.map((entry, i) => `
+        <div>
+          ${buildCardHTML(entry, fontCss)}
+          ${i === 0 && page.length === 2
+            ? `<div style="width:265mm;height:0;border-top:1px solid #E0E0E0;margin:5mm 0;position:relative;">
+                <span style="position:absolute;right:0;top:2px;font-size:7px;color:#CCCCCC;">✂ 자르기</span>
+               </div>`
+            : ""}
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
 
   const html = `<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <style>
-    @page { size: A4 portrait; margin: 10mm; }
+    @page { size: A4 landscape; margin: 0; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Noto Sans KR', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   </style>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@700;900&family=Nanum+Gothic&family=Nanum+Myeongjo&family=Nanum+Pen+Script&family=Nanum+Brush+Script&family=Nanum+Square&family=Black+Han+Sans&family=Jua&family=Gaegu&display=swap">
 </head>
 <body>
-  ${cardsHTML}
+  ${pagesHTML}
   <script>
-    // 폰트 로드 후 인쇄
     document.fonts.ready.then(() => {
       setTimeout(() => { window.print(); window.close(); }, 300);
     });
