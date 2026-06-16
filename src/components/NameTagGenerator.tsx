@@ -61,6 +61,7 @@ export default function NameTagGenerator({ preloadedStudents = [], preloadedLabe
   const [emojiMode,  setEmojiMode]  = useState<EmojiMode>("none");
   const [activeSet,  setActiveSet]  = useState("spring");
   const [showPreview,setShowPreview]= useState(false);
+  const [orientation, setOrientation] = useState<Orientation>("portrait");
 
   // 외부에서 반 불러오기
   useEffect(() => {
@@ -202,31 +203,48 @@ export default function NameTagGenerator({ preloadedStudents = [], preloadedLabe
         {/* 미리보기 */}
         {showPreview && entries.length > 0 && (
           <div className="bg-white rounded-xl border border-[#E8E0D0] p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div>
                 <h3 className="font-bold text-[#1B4332]">미리보기</h3>
-                <p className="text-xs text-[#9A9A9A] mt-0.5">{entries.length}개 · A4 가로 1장에 2개 · 개별 인쇄 가능</p>
+                <p className="text-xs text-[#9A9A9A] mt-0.5">
+                  {entries.length}개 ·
+                  {orientation === "portrait" ? " A4 세로 1장 = 1개" : " A4 가로 1장 = 2개"}
+                </p>
               </div>
-              {isGuest ? (
-                <GateBanner
-                  reason="login"
-                  message="인쇄는 로그인 후 사용할 수 있어요."
-                  onLogin={() => document.dispatchEvent(new CustomEvent("ssamtool:openLogin"))}
-                />
-              ) : (
-                <button onClick={() => printEntries(entries, currentFont.css)}
-                  className="px-4 py-2 bg-[#F2C94C] text-[#1B4332] text-sm font-bold rounded-lg hover:bg-[#EAB800] transition-colors">
-                  🖨️ 전체 인쇄
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {/* 방향 선택 */}
+                <div className="flex rounded-lg border border-[#E8E0D0] overflow-hidden">
+                  <button onClick={() => setOrientation("portrait")}
+                    className={`px-3 py-1.5 text-xs font-semibold transition-colors ${orientation === "portrait" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A] hover:bg-[#F5F0E8]"}`}>
+                    세로형
+                  </button>
+                  <button onClick={() => setOrientation("landscape")}
+                    className={`px-3 py-1.5 text-xs font-semibold transition-colors ${orientation === "landscape" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A] hover:bg-[#F5F0E8]"}`}>
+                    가로형
+                  </button>
+                </div>
+                {isGuest ? (
+                  <GateBanner
+                    reason="login"
+                    message="인쇄는 로그인 후 사용할 수 있어요."
+                    onLogin={() => document.dispatchEvent(new CustomEvent("ssamtool:openLogin"))}
+                  />
+                ) : (
+                  <button onClick={() => printEntries(entries, currentFont.css, orientation)}
+                    className="px-4 py-2 bg-[#F2C94C] text-[#1B4332] text-sm font-bold rounded-lg hover:bg-[#EAB800] transition-colors">
+                    🖨️ 전체 인쇄
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 화면용 미리보기 카드 목록 */}
             <div className="space-y-4">
               {entries.map(entry => (
                 <ScreenCard key={entry.id} entry={entry} fontCss={currentFont.css}
+                  orientation={orientation}
                   onReshuffle={(emojiMode === "set" || emojiMode === "random") ? () => reshuffleEmoji(entry.id) : undefined}
-                  onPrint={isGuest ? undefined : () => printEntries([entry], currentFont.css)}
+                  onPrint={isGuest ? undefined : () => printEntries([entry], currentFont.css, orientation)}
                 />
               ))}
             </div>
@@ -237,13 +255,15 @@ export default function NameTagGenerator({ preloadedStudents = [], preloadedLabe
   );
 }
 
+// ── 방향 선택 UI용 타입 ──────────────────────────────────────────
+type Orientation = "portrait" | "landscape";
+
 // ── 화면 미리보기 카드 ────────────────────────────────────────────
-function ScreenCard({ entry, fontCss, onReshuffle, onPrint }: {
-  entry: NameEntry; fontCss: string; onReshuffle?: () => void; onPrint?: () => void;
+function ScreenCard({ entry, fontCss, onReshuffle, onPrint, orientation }: {
+  entry: NameEntry; fontCss: string; onReshuffle?: () => void; onPrint?: () => void; orientation: Orientation;
 }) {
   return (
     <div className="border border-[#E8E0D0] rounded-xl overflow-hidden bg-white">
-      {/* 헤더 */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#E8E0D0] bg-[#FAFAFA]">
         <span className="text-xs font-semibold text-[#9A9A9A]">이름표 — {entry.name}</span>
         <div className="flex items-center gap-2">
@@ -259,180 +279,183 @@ function ScreenCard({ entry, fontCss, onReshuffle, onPrint }: {
         </div>
       </div>
 
-      {/* 가로 방향 미리보기 */}
-      <div className="flex flex-row items-stretch py-3 gap-0 overflow-x-auto" style={{ fontFamily: fontCss }}>
-
-        {/* 앞면 (180도 회전) */}
-        <div className="flex items-center justify-center bg-white flex-shrink-0"
-          style={{ width: 160, height: 80, transform: "rotate(180deg)" }}>
-          <div className="flex flex-col items-center gap-0.5">
-            {entry.emoji && <span style={{ fontSize: 18 }}>{entry.emoji}</span>}
-            <span style={{ fontSize: 22, fontWeight: 900, color: "#111", letterSpacing: "0.04em" }}>
-              {entry.name}
-            </span>
+      {orientation === "portrait" ? (
+        /* 세로형 미리보기: 위→아래 순서로 패널 */
+        <div className="flex flex-col items-center py-3 gap-0" style={{ fontFamily: fontCss }}>
+          {/* 앞면 (180도) */}
+          <div className="flex items-center justify-center bg-white w-52 h-20" style={{ transform: "rotate(180deg)" }}>
+            <div className="flex flex-col items-center gap-0.5">
+              {entry.emoji && <span style={{ fontSize: 16 }}>{entry.emoji}</span>}
+              <span style={{ fontSize: 20, fontWeight: 900, color: "#111" }}>{entry.name}</span>
+            </div>
           </div>
+          <div className="flex items-center gap-1 w-52"><div className="flex-1 border-t border-dashed border-gray-300"/><span className="text-[8px] text-gray-300">안쪽 접기</span></div>
+          <div className="flex items-center justify-center bg-[#FAFAFA] w-52 h-20">
+            <span style={{ fontSize: 18, fontWeight: 700, color: "#555" }}>{entry.name}</span>
+          </div>
+          <div className="flex items-center gap-1 w-52"><div className="flex-1 border-t border-dashed border-gray-300"/><span className="text-[8px] text-gray-300">바깥 접기</span></div>
+          <div className="flex items-center justify-center bg-[#F5F5F5] w-52 h-6">
+            <span className="text-[7px] text-gray-300">SSAMTOOL</span>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">A4 세로 1장 = 이름표 1개</p>
         </div>
-
-        {/* 접는선 1 */}
-        <div className="flex flex-col items-center justify-center flex-shrink-0" style={{ width: 24 }}>
-          <div className="h-full border-l border-dashed border-gray-300" />
-          <span className="text-[8px] text-gray-300" style={{ writingMode: "vertical-rl" }}>안쪽</span>
+      ) : (
+        /* 가로형 미리보기: 좌→우 순서로 패널 */
+        <div className="flex flex-row items-center py-3 px-3 gap-0 overflow-x-auto" style={{ fontFamily: fontCss }}>
+          {/* 앞면 (180도) */}
+          <div className="flex items-center justify-center bg-white flex-shrink-0 h-20 w-36" style={{ transform: "rotate(180deg)" }}>
+            <div className="flex flex-col items-center gap-0.5">
+              {entry.emoji && <span style={{ fontSize: 14 }}>{entry.emoji}</span>}
+              <span style={{ fontSize: 18, fontWeight: 900, color: "#111" }}>{entry.name}</span>
+            </div>
+          </div>
+          <div className="flex flex-col h-20 items-center justify-center flex-shrink-0 w-5">
+            <div className="h-full border-l border-dashed border-gray-300"/>
+            <span className="text-[7px] text-gray-300" style={{ writingMode: "vertical-rl" }}>안쪽</span>
+          </div>
+          <div className="flex items-center justify-center bg-[#FAFAFA] flex-shrink-0 h-20 w-36">
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#555" }}>{entry.name}</span>
+          </div>
+          <div className="flex flex-col h-20 items-center justify-center flex-shrink-0 w-5">
+            <div className="h-full border-l border-dashed border-gray-300"/>
+            <span className="text-[7px] text-gray-300" style={{ writingMode: "vertical-rl" }}>바깥</span>
+          </div>
+          <div className="flex items-center justify-center bg-[#F5F5F5] flex-shrink-0 h-20 w-7">
+            <span className="text-[7px] text-gray-300" style={{ writingMode: "vertical-rl" }}>SSAMTOOL</span>
+          </div>
+          <p className="text-[10px] text-gray-400 ml-3 whitespace-nowrap">A4 가로 1장에 2개</p>
         </div>
-
-        {/* 뒷면 */}
-        <div className="flex items-center justify-center bg-[#FAFAFA] flex-shrink-0"
-          style={{ width: 160, height: 80 }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: "#555", letterSpacing: "0.04em" }}>
-            {entry.name}
-          </span>
-        </div>
-
-        {/* 접는선 2 */}
-        <div className="flex flex-col items-center justify-center flex-shrink-0" style={{ width: 24 }}>
-          <div className="h-full border-l border-dashed border-gray-300" />
-          <span className="text-[8px] text-gray-300" style={{ writingMode: "vertical-rl" }}>바깥</span>
-        </div>
-
-        {/* 지지대 */}
-        <div className="flex items-center justify-center bg-[#F5F5F5] flex-shrink-0"
-          style={{ width: 28, height: 80 }}>
-          <span className="text-[7px] text-gray-300" style={{ writingMode: "vertical-rl" }}>SSAMTOOL</span>
-        </div>
-      </div>
-
-      <p className="text-[10px] text-gray-400 mt-1 text-center">A4 가로 1장에 2개 · 세로 접는선을 접으면 가로 명패 완성</p>
+      )}
     </div>
   );
 }
 
-// ── iframe 인쇄 함수 ─────────────────────────────────────────────
-// A4 가로: 한 장에 이름표 2개 (위/아래)
-// 각 이름표: 앞면(120mm) | 뒷면(120mm) | 지지대(25mm) 가로 배치
-// 이름표 높이: (210mm - 여백20mm) / 2 = 95mm
-function buildCardHTML(entry: NameEntry, fontCss: string): string {
+// ── 인쇄: 세로형 ─────────────────────────────────────────────────
+// A4 세로 (210×297mm), 여백 10mm
+// 앞면 120mm / 뒷면 120mm / 지지대 25mm = 265mm (세로 배치)
+function buildPortraitHTML(entry: NameEntry, fontCss: string): string {
   const emojiBlock = entry.emoji
-    ? `<div style="font-size:36px;line-height:1;margin-bottom:6px;">${entry.emoji}</div>`
-    : "";
-
+    ? `<div style="font-size:52px;line-height:1;margin-bottom:8px;">${entry.emoji}</div>` : "";
   return `
-    <div style="
-      display:flex; flex-direction:row;
-      width:265mm; height:85mm;
-      font-family:${fontCss};
-      break-inside:avoid;
-    ">
+    <div style="width:190mm;page-break-after:always;break-after:page;font-family:${fontCss};">
       <!-- 앞면 120mm (180도 회전) -->
-      <div style="
-        width:120mm; height:85mm; box-sizing:border-box;
-        display:flex; flex-direction:column;
-        align-items:center; justify-content:center; gap:6px;
-        transform:rotate(180deg);
-        flex-shrink:0;
-      ">
+      <div style="width:190mm;height:120mm;box-sizing:border-box;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:10px;transform:rotate(180deg);">
         ${emojiBlock}
-        <div style="
-          font-size:52px; font-weight:900; color:#111;
-          letter-spacing:0.06em; line-height:1.1;
-          text-align:center; word-break:keep-all;
-        ">${entry.name}</div>
+        <div style="font-size:68px;font-weight:900;color:#111;letter-spacing:0.06em;
+          line-height:1.1;text-align:center;word-break:keep-all;">${entry.name}</div>
       </div>
-
-      <!-- 접는선 1: 안쪽 접기 (세로선) -->
-      <div style="width:0; height:85mm; border-left:1.5px dashed #AAAAAA; position:relative; flex-shrink:0;">
-        <span style="position:absolute;bottom:2px;left:3px;font-size:7px;color:#BBBBBB;writing-mode:vertical-rl;">안쪽 접기</span>
+      <!-- 접는선 1 -->
+      <div style="width:190mm;height:0;border-top:1.5px dashed #AAAAAA;position:relative;">
+        <span style="position:absolute;right:0;top:3px;font-size:7px;color:#BBBBBB;">안쪽 접기</span>
       </div>
-
       <!-- 뒷면 120mm -->
-      <div style="
-        width:120mm; height:85mm; box-sizing:border-box;
-        display:flex; align-items:center; justify-content:center;
-        flex-shrink:0;
-      ">
-        <div style="
-          font-size:40px; font-weight:700; color:#333;
-          letter-spacing:0.06em; text-align:center;
-        ">${entry.name}</div>
+      <div style="width:190mm;height:120mm;box-sizing:border-box;display:flex;
+        align-items:center;justify-content:center;">
+        <div style="font-size:44px;font-weight:700;color:#333;letter-spacing:0.06em;text-align:center;">
+          ${entry.name}</div>
       </div>
-
-      <!-- 접는선 2: 바깥 접기 (세로선) -->
-      <div style="width:0; height:85mm; border-left:1.5px dashed #AAAAAA; position:relative; flex-shrink:0;">
-        <span style="position:absolute;bottom:2px;left:3px;font-size:7px;color:#BBBBBB;writing-mode:vertical-rl;">바깥 접기</span>
+      <!-- 접는선 2 -->
+      <div style="width:190mm;height:0;border-top:1.5px dashed #AAAAAA;position:relative;">
+        <span style="position:absolute;right:0;top:3px;font-size:7px;color:#BBBBBB;">바깥 접기</span>
       </div>
-
       <!-- 지지대 25mm -->
-      <div style="
-        width:25mm; height:85mm; box-sizing:border-box;
-        display:flex; align-items:center; justify-content:center;
-        flex-shrink:0;
-      ">
-        <span style="font-size:7px;color:#CCCCCC;writing-mode:vertical-rl;letter-spacing:2px;">SSAMTOOL</span>
+      <div style="width:190mm;height:25mm;box-sizing:border-box;display:flex;
+        align-items:center;justify-content:center;">
+        <span style="font-size:8px;color:#CCCCCC;letter-spacing:2px;">SSAMTOOL</span>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-function printEntries(entries: NameEntry[], fontCss: string) {
+// ── 인쇄: 가로형 ─────────────────────────────────────────────────
+// A4 가로 (297×210mm), 여백 10mm
+// 1장에 2개, 좌우로 분할 (각 이름표 너비 ~130mm)
+// 이름표 구조: 앞면|접선|뒷면|접선|지지대 (세로 배치, 가로로 펼침)
+// 앞면 80mm / 뒷면 80mm / 지지대 20mm = 180mm < A4가로 사용폭 277mm
+// 이름표 높이 = 190mm (A4가로 세로 사용폭)
+function buildLandscapeHTML(entry: NameEntry, fontCss: string): string {
+  const emojiBlock = entry.emoji
+    ? `<div style="font-size:40px;line-height:1;margin-bottom:6px;">${entry.emoji}</div>` : "";
+  return `
+    <div style="
+      display:inline-flex;flex-direction:column;
+      width:130mm;height:190mm;
+      font-family:${fontCss};
+      vertical-align:top;
+    ">
+      <!-- 앞면 80mm (180도 회전) -->
+      <div style="width:130mm;height:80mm;box-sizing:border-box;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+        transform:rotate(180deg);">
+        ${emojiBlock}
+        <div style="font-size:48px;font-weight:900;color:#111;letter-spacing:0.06em;
+          line-height:1.1;text-align:center;word-break:keep-all;">${entry.name}</div>
+      </div>
+      <!-- 접는선 1 -->
+      <div style="width:130mm;height:0;border-top:1.5px dashed #AAAAAA;position:relative;">
+        <span style="position:absolute;right:0;top:3px;font-size:7px;color:#BBBBBB;">안쪽 접기</span>
+      </div>
+      <!-- 뒷면 80mm -->
+      <div style="width:130mm;height:80mm;box-sizing:border-box;
+        display:flex;align-items:center;justify-content:center;">
+        <div style="font-size:36px;font-weight:700;color:#333;letter-spacing:0.06em;text-align:center;">
+          ${entry.name}</div>
+      </div>
+      <!-- 접는선 2 -->
+      <div style="width:130mm;height:0;border-top:1.5px dashed #AAAAAA;position:relative;">
+        <span style="position:absolute;right:0;top:3px;font-size:7px;color:#BBBBBB;">바깥 접기</span>
+      </div>
+      <!-- 지지대 20mm -->
+      <div style="width:130mm;height:20mm;box-sizing:border-box;
+        display:flex;align-items:center;justify-content:center;">
+        <span style="font-size:7px;color:#CCCCCC;letter-spacing:2px;">SSAMTOOL</span>
+      </div>
+    </div>`;
+}
+
+function printEntries(entries: NameEntry[], fontCss: string, orientation: Orientation) {
   if (!entries.length) return;
 
-  // 2개씩 묶어서 페이지 구성
-  const pages: NameEntry[][] = [];
-  for (let i = 0; i < entries.length; i += 2) {
-    pages.push(entries.slice(i, i + 2));
+  let bodyHTML = "";
+
+  if (orientation === "portrait") {
+    // 세로형: 1장 1개
+    bodyHTML = entries.map(e => buildPortraitHTML(e, fontCss)).join("");
+  } else {
+    // 가로형: 1장 2개, 좌우 나란히
+    const pages: NameEntry[][] = [];
+    for (let i = 0; i < entries.length; i += 2) pages.push(entries.slice(i, i + 2));
+    bodyHTML = pages.map((page, pi) => `
+      <div style="
+        page-break-after:${pi < pages.length - 1 ? "always" : "auto"};
+        break-after:${pi < pages.length - 1 ? "page" : "auto"};
+        padding:10mm;
+        display:flex;gap:17mm;align-items:flex-start;
+      ">
+        ${page.map(e => buildLandscapeHTML(e, fontCss)).join(`
+          <div style="width:0;height:190mm;border-left:1px dashed #E0E0E0;position:relative;">
+            <span style="position:absolute;top:2px;left:3px;font-size:7px;color:#CCCCCC;">✂ 자르기</span>
+          </div>`)}
+      </div>`).join("");
   }
 
-  const pagesHTML = pages.map((page, pi) => `
-    <div style="
-      page-break-after: ${pi < pages.length - 1 ? "always" : "auto"};
-      break-after: ${pi < pages.length - 1 ? "page" : "auto"};
-      display:flex; flex-direction:column; gap:0;
-      padding: 5mm 15mm;
-    ">
-      ${page.map((entry, i) => `
-        <div>
-          ${buildCardHTML(entry, fontCss)}
-          ${i === 0 && page.length === 2
-            ? `<div style="width:265mm;height:0;border-top:1px solid #E0E0E0;margin:5mm 0;position:relative;">
-                <span style="position:absolute;right:0;top:2px;font-size:7px;color:#CCCCCC;">✂ 자르기</span>
-               </div>`
-            : ""}
-        </div>
-      `).join("")}
-    </div>
-  `).join("");
-
-  const html = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
+  const pageSize = orientation === "portrait" ? "A4 portrait" : "A4 landscape";
+  const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
   <style>
-    @page { size: A4 landscape; margin: 0; }
+    @page { size: ${pageSize}; margin: ${orientation === "portrait" ? "10mm" : "0"}; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Noto Sans KR', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   </style>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@700;900&family=Nanum+Gothic&family=Nanum+Myeongjo&family=Nanum+Pen+Script&family=Nanum+Brush+Script&family=Nanum+Square&family=Black+Han+Sans&family=Jua&family=Gaegu&display=swap">
-</head>
-<body>
-  ${pagesHTML}
-  <script>
-    document.fonts.ready.then(() => {
-      setTimeout(() => { window.print(); window.close(); }, 300);
-    });
-  </script>
-</body>
-</html>`;
+  </head><body>${bodyHTML}
+  <script>document.fonts.ready.then(()=>setTimeout(()=>{window.print();window.close();},300));</script>
+  </body></html>`;
 
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;";
   document.body.appendChild(iframe);
-
   const doc = iframe.contentDocument || iframe.contentWindow?.document;
   if (!doc) return;
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  // iframe 사용 후 정리
-  iframe.contentWindow?.addEventListener("afterprint", () => {
-    document.body.removeChild(iframe);
-  });
+  doc.open(); doc.write(html); doc.close();
+  iframe.contentWindow?.addEventListener("afterprint", () => document.body.removeChild(iframe));
 }
