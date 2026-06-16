@@ -223,6 +223,15 @@ const APP_PROMOS_LIST = [
     href:  "https://wooriban.vercel.app",
   },
   {
+    icon:  "🎮",
+    name:  "케이아레나",
+    desc:  "한국어 어휘 게임",
+    cta:   "게임하기",
+    bg:    "bg-[#FFF5F0]",
+    text:  "text-[#C05621]",
+    href:  "https://karena-game.vercel.app/",
+  },
+  {
     icon:  "🪪",
     name:  "아이엠",
     desc:  "AI 디지털 명함",
