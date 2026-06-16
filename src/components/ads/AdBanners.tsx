@@ -220,7 +220,7 @@ const APP_PROMOS_LIST = [
     cta:   "바로가기",
     bg:    "bg-[#F0FFF4]",
     text:  "text-[#1B4332]",
-    href:  "https://wooriban.vercel.app",
+    href:  "https://wooriban-app.vercel.app",
   },
   {
     icon:  "🎮",
