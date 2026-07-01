@@ -13,12 +13,13 @@ import GroupDivider from "@/components/GroupDivider";
 import SpeakingOrder from "@/components/SpeakingOrder";
 import StudentMemo from "@/components/MemoSheet";
 import FeedbackButton from "@/components/FeedbackButton";
+import QuizItemManager from "@/components/quiz-item-manager";
 import InAppBrowserBanner from "@/components/InAppBrowserBanner";
 import { AdSense, CoupangBanner, CoupangSearchWidget, KakaoAdFitResponsive, AppPromoBar } from "@/components/ads/AdBanners";
 import { useAuth } from "@/context/AuthContext";
 import { signOut } from "@/lib/auth";
 
-type Tab = "nametag"|"timer"|"random"|"seating"|"group"|"speaking"|"memo";
+type Tab = "nametag"|"timer"|"random"|"seating"|"group"|"speaking"|"memo"|"quiz";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "nametag",  label: "이름표",   icon: "🪪" },
@@ -28,12 +29,12 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "group",    label: "모둠",     icon: "👥" },
   { id: "speaking", label: "시험순서", icon: "🎤" },
   { id: "memo",     label: "메모",     icon: "📝" },
+  { id: "quiz",     label: "퀴즈",     icon: "🎯" },
 ];
 
 export default function AppPage() {
   const [activeTab,      setActiveTab]      = useState<Tab>("nametag");
   const [showLogin,      setShowLogin]      = useState(false);
-  const [userMenuOpen,   setUserMenuOpen]   = useState(false);
   const [classPanelOpen, setClassPanelOpen] = useState(false);
 
   const [loadedStudents, setLoadedStudents] = useState<string[]>([]);
@@ -51,7 +52,8 @@ export default function AppPage() {
     return () => document.removeEventListener("ssamtool:openLogin", handler);
   }, []);
 
-  const handleSignOut = async () => { await signOut(); setUserMenuOpen(false); };
+
+  const handleSignOut = async () => { await signOut(); };
 
   const handleSelectGroup = (students: string[], label: string, groupId?: string) => {
     setLoadedStudents(students);
@@ -73,8 +75,8 @@ export default function AppPage() {
       {/* 인앱 브라우저 배너 */}
       <InAppBrowserBanner />
 
-      <header className="chalk-header">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+      <header className="chalk-header relative z-20">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-3 relative z-20">
           <Link href="/" className="flex items-center gap-3 flex-shrink-0">
             <div className="w-9 h-9 rounded bg-[#F2C94C] flex items-center justify-center text-[#1B4332] font-black text-base select-none">쌤</div>
             <div className="hidden sm:block">
@@ -91,7 +93,12 @@ export default function AppPage() {
               </button>
             )}
 
-            {/* 관리자 버튼 — 관리자 계정 로그인 시만 표시 */}
+            {/* 피드백 버튼 — 헤더 이동 */}
+            {user && !loading && (
+              <FeedbackButton />
+            )}
+
+            {/* 관리자 버튼 */}
             {admin && !loading && (
               <a href="/admin"
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors">
@@ -102,9 +109,9 @@ export default function AppPage() {
             {loading ? (
               <div className="w-24 h-8 bg-[#2D6A4F] rounded-lg animate-pulse" />
             ) : user ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 relative">
 
-                {/* 분필 잔액 — 클릭하면 모달 */}
+                {/* 분필 잔액 */}
                 <button
                   onClick={() => setShowChalkModal(true)}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#2D6A4F] bg-[#1B4332] hover:border-[#A8D5B7] transition-colors"
@@ -119,48 +126,24 @@ export default function AppPage() {
                   </Link>
                 </button>
 
-                {/* 유저 메뉴 */}
-                <div className="relative">
-                  <button onClick={() => setUserMenuOpen(v => !v)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#2D6A4F] hover:border-[#A8D5B7] transition-colors">
-                    {user.photoURL
-                      ? <Image src={user.photoURL} alt="프로필" width={22} height={22} className="rounded-full" />
-                      : <div className="w-6 h-6 rounded-full bg-[#F2C94C] flex items-center justify-center text-[#1B4332] text-[10px] font-bold">
-                          {(user.displayName ?? user.email ?? "?")[0].toUpperCase()}
-                        </div>
-                    }
-                    <span className="text-[#A8D5B7] text-xs">▾</span>
-                  </button>
-
-                  {userMenuOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-[#E8E0D0] overflow-hidden z-50">
-                      {/* 유저 정보 */}
-                      <div className="px-4 py-3 bg-[#F9F9F9] border-b border-[#E8E0D0]">
-                        <p className="text-xs font-bold text-[#1B4332] truncate">{user.displayName ?? "사용자"}</p>
-                        <p className="text-[11px] text-[#9A9A9A] truncate">{user.email}</p>
+                {/* 프로필 */}
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#2D6A4F]">
+                  {user.photoURL
+                    ? <Image src={user.photoURL} alt="프로필" width={22} height={22} className="rounded-full" />
+                    : <div className="w-6 h-6 rounded-full bg-[#F2C94C] flex items-center justify-center text-[#1B4332] text-[10px] font-bold">
+                        {(user.displayName ?? user.email ?? "?")[0].toUpperCase()}
                       </div>
-                      <button onClick={() => { setClassPanelOpen(true); setUserMenuOpen(false); }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-[#2D2D2D] hover:bg-[#F5F0E8] transition-colors flex items-center gap-2">
-                        👥 <span>내 반 관리</span>
-                      </button>
-                      <Link href="/shop" onClick={() => setUserMenuOpen(false)}
-                        className="block px-4 py-2.5 text-sm text-[#2D2D2D] hover:bg-[#F5F0E8] transition-colors flex items-center gap-2">
-                        🖍️ <span>분필 충전</span>
-                      </Link>
-                      {admin && (
-                        <Link href="/admin" onClick={() => setUserMenuOpen(false)}
-                          className="block px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2">
-                          🛠️ <span>관리자 페이지</span>
-                        </Link>
-                      )}
-                      {/* 로그아웃 */}
-                      <button onClick={handleSignOut}
-                        className="w-full text-left px-4 py-2.5 text-sm font-bold text-[#C53030] hover:bg-[#FFF5F5] transition-colors flex items-center gap-2 border-t border-[#E8E0D0]">
-                        🚪 <span>로그아웃</span>
-                      </button>
-                    </div>
-                  )}
+                  }
+                  <span className="text-[#F5F0E8] text-xs hidden sm:inline max-w-[60px] truncate">
+                    {user.displayName ?? user.email?.split("@")[0]}
+                  </span>
                 </div>
+
+                {/* 로그아웃 */}
+                <button onClick={handleSignOut}
+                  className="px-2.5 py-1.5 rounded-lg bg-[#C53030] hover:bg-[#9B2C2C] text-white text-xs font-bold transition-colors whitespace-nowrap">
+                  로그아웃
+                </button>
               </div>
             ) : (
               <button onClick={() => setShowLogin(true)}
@@ -217,6 +200,7 @@ export default function AppPage() {
             {activeTab === "group"    && <GroupDivider      {...sharedProps} />}
             {activeTab === "speaking" && <SpeakingOrder     {...sharedProps} />}
             {activeTab === "memo"     && <StudentMemo       {...sharedProps} preloadedGroupId={loadedGroupId} />}
+            {activeTab === "quiz"     && <QuizItemManager />}
           </div>
 
           {/* 우측 사이드 (PC만) */}
@@ -251,7 +235,6 @@ export default function AppPage() {
 
       {showLogin    && <LoginModal onClose={() => setShowLogin(false)} />}
       <ClassPanel open={classPanelOpen} onClose={() => setClassPanelOpen(false)} onSelectGroup={handleSelectGroup} />
-      {userMenuOpen && <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />}
       <FeedbackButton />
 
       {/* 분필 현황 모달 */}

@@ -27,7 +27,7 @@ export default function FeedbackButton() {
     if (!content.trim()) return;
     setBusy(true);
     try {
-      await addDoc(collection(db, "feedbacks"), {
+      await addDoc(collection(db, "ssamtoolFeedbacks"), {
         uid:      user.uid,
         email:    user.email,
         category,
@@ -49,21 +49,19 @@ export default function FeedbackButton() {
 
   return (
     <>
-      {/* 플로팅 버튼 */}
+      {/* 헤더 인라인 버튼 */}
       <button
         onClick={() => setOpen(v => !v)}
-        className={`fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center transition-all ${
-          open ? "bg-[#4A4A4A] rotate-45" : "bg-[#1B4332] hover:bg-[#2D6A4F]"
-        }`}
+        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#2D6A4F] hover:bg-[#3D7A5F] text-[#F5F0E8] text-xs font-medium transition-colors"
         title="피드백 보내기"
       >
-        <span className="text-white text-xl">{open ? "×" : "💬"}</span>
+        <span>💬</span>
+        <span className="hidden sm:inline">피드백</span>
       </button>
 
-      {/* 피드백 패널 */}
+      {/* 피드백 패널 — 헤더 아래 드롭다운 */}
       {open && (
-        <div className="fixed bottom-20 right-6 z-40 w-80 bg-white rounded-2xl shadow-2xl border border-[#E8E0D0] overflow-hidden">
-          {/* 헤더 */}
+        <div className="absolute top-full right-0 mt-2 z-50 w-80 bg-white rounded-2xl shadow-2xl border border-[#E8E0D0] overflow-hidden">
           <div className="chalk-header px-4 py-3">
             <h3 className="chalk-text font-bold text-sm">피드백 보내기</h3>
             <p className="text-[#A8D5B7] text-[11px] mt-0.5">의견을 남겨주시면 빠르게 반영할게요</p>
@@ -77,7 +75,6 @@ export default function FeedbackButton() {
             </div>
           ) : (
             <div className="p-4 space-y-3">
-              {/* 카테고리 */}
               <div className="flex gap-2">
                 {CATEGORIES.map(({ id, icon, label }) => (
                   <button key={id} onClick={() => setCategory(id)}
@@ -92,7 +89,6 @@ export default function FeedbackButton() {
                 ))}
               </div>
 
-              {/* 내용 */}
               <textarea
                 value={content}
                 onChange={e => setContent(e.target.value)}
@@ -117,10 +113,7 @@ export default function FeedbackButton() {
         </div>
       )}
 
-      {/* 외부 클릭 닫기 */}
-      {open && (
-        <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-      )}
+      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
     </>
   );
 }
