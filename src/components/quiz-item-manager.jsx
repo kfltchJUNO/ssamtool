@@ -66,7 +66,7 @@ export default function QuizItemManager() {
   const toggleExpand = catId => {
     setExpanded(prev => {
       const next = new Set(prev);
-      next.has(catId) ? next.delete(catId) : next.add(catId);
+      if (next.has(catId)) { next.delete(catId); } else { next.add(catId); }
       return next;
     });
   };
@@ -165,8 +165,8 @@ export default function QuizItemManager() {
         return;
       }
       setQuizResult(data);
-    } catch (err) {
-      setGenError(err.message || "네트워크 오류가 발생했어요. 다시 시도해주세요.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "네트워크 오류가 발생했어요."; setGenError(msg);
     } finally {
       setIsGenerating(false);
     }
@@ -189,7 +189,7 @@ export default function QuizItemManager() {
         return;
       }
       setShareInfo(data);
-    } catch (err) {
+    } catch {
       setGenError("게시 중 오류가 발생했어요.");
     } finally {
       setIsPublishing(false);

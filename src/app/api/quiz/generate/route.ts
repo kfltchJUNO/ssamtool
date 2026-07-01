@@ -4,7 +4,6 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { adminDb, adminAuth } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { deductCredits, refundCredits, InsufficientCreditsError } from "@/lib/credits";
-import { nanoid } from "nanoid"; // 공유 코드 생성용 (없다면 pnpm add nanoid)
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -36,13 +35,24 @@ function buildQuizPrompt({
 {"questions":[{"type":"fill-in-blank","question":"저는 학교___ 공부를 합니다.","choices":null,"answer":"에서","explanation":"'에서'는 동작이 일어나는 장소를 나타낼 때 사용합니다."}]}`;
 }
 
-// 인증된 사용자의 uid를 Authorization 헤더(Firebase ID Token)에서 추출
 async function getUidFromRequest(req: NextRequest): Promise<string> {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.replace("Bearer ", "");
   if (!token) throw new Error("UNAUTHENTICATED");
   const decoded = await adminAuth.verifyIdToken(token);
   return decoded.uid;
+}
+
+interface QuizQuestion {
+  type:        string;
+  question:    string;
+  choices:     string[] | null;
+  answer:      string;
+  explanation: string;
+}
+
+interface ParsedQuiz {
+  questions: QuizQuestion[];
 }
 
 export async function POST(req: NextRequest) {
@@ -55,7 +65,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { curriculum, unit, grammarPoints, difficulty, count } = body;
+    const { curriculum, unit, grammarPoints, difficulty, count } = body as {
+      curriculum:    string;
+      unit:          string;
+      grammarPoints: string[];
+      difficulty:    string;
+      count:         number;
+    };
 
     if (!grammarPoints?.length || !count) {
       return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
@@ -66,7 +82,7 @@ export async function POST(req: NextRequest) {
 
     const chalkCost = calcChalkCost(count);
 
-    // 1) 분필 선차감 (이벤트 분필 우선 소진)
+    // 1) 분필 선차감
     try {
       await deductCredits(uid, chalkCost, "퀴즈 생성");
     } catch (e) {
@@ -83,38 +99,39 @@ export async function POST(req: NextRequest) {
     });
     const prompt = buildQuizPrompt({ grammarPoints, difficulty, count });
     const result = await model.generateContent(prompt);
-    const raw = result.response.text();
+    const raw    = result.response.text();
 
-    let parsed: { questions: any[] };
+    let parsed: ParsedQuiz;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(raw) as ParsedQuiz;
     } catch {
       await refundCredits(uid, chalkCost, "퀴즈 생성 실패(파싱 오류)");
       return NextResponse.json({ error: "퀴즈 생성 응답을 해석하지 못했습니다. 다시 시도해 주세요." }, { status: 502 });
     }
 
-    // 3) Firestore 저장 (시나리오 B 대비: shareCode, isPublished 필드 포함)
+    // 3) Firestore 저장
     const quizRef = adminDb.collection("quizzes").doc();
     await quizRef.set({
-      title: `${curriculum || "커스텀"} ${unit || ""} 퀴즈`.trim(),
-      curriculum: curriculum || null,
-      unit: unit || null,
+      title:        `${curriculum || "커스텀"} ${unit || ""} 퀴즈`.trim(),
+      curriculum:   curriculum || null,
+      unit:         unit || null,
       grammarPoints,
       difficulty,
-      questions: parsed.questions,
-      createdBy: uid,
-      createdAt: FieldValue.serverTimestamp(),
-      isPublished: false,
-      shareCode: null, // 게시(publish) 시점에 생성
+      questions:    parsed.questions,
+      createdBy:    uid,
+      createdAt:    FieldValue.serverTimestamp(),
+      isPublished:  false,
+      shareCode:    null,
     });
 
     return NextResponse.json({
-      quizId: quizRef.id,
-      questions: parsed.questions,
+      quizId:     quizRef.id,
+      questions:  parsed.questions,
       chalkSpent: chalkCost,
     });
-  } catch (err: any) {
-    console.error("[quiz/generate] error:", err);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "알 수 없는 오류";
+    console.error("[quiz/generate] error:", msg);
     return NextResponse.json({ error: "서버 오류가 발생했습니다." }, { status: 500 });
   }
 }
