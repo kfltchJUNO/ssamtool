@@ -5,17 +5,41 @@ import {
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 
-// 기본 시드 데이터 — 동국 한국어 2A 커리큘럼 항목/카테고리
+// ── 급수 정의 ─────────────────────────────────────────────────────
+const LEVELS = [
+  { value: "beginner",     label: "초급" },
+  { value: "intermediate", label: "중급" },
+  { value: "advanced",     label: "고급" },
+];
+
+const LEVEL_BADGE = {
+  beginner:     "bg-green-50 text-green-600 border-green-200",
+  intermediate: "bg-blue-50 text-blue-600 border-blue-200",
+  advanced:     "bg-purple-50 text-purple-600 border-purple-200",
+};
+
+const LEVEL_LABEL = { beginner: "초", intermediate: "중", advanced: "고" };
+
+// ── 기본 시드 데이터 (급수 태그 포함) ─────────────────────────────
 const SEED_LIBRARY = [
   {
     id: "cat-particle",
     name: "조사",
     color: "indigo",
     items: [
-      { id: "p1", label: "에서", note: "장소(활동이 이루어지는 곳)" },
-      { id: "p2", label: "에게", note: "방향" },
-      { id: "p3", label: "부터", note: "시작점" },
-      { id: "p4", label: "까지", note: "끝점/한정" },
+      { id: "p1",  label: "이/가",   note: "주격",              level: "beginner" },
+      { id: "p2",  label: "은/는",   note: "주제/대조",         level: "beginner" },
+      { id: "p3",  label: "을/를",   note: "목적격",            level: "beginner" },
+      { id: "p4",  label: "에",      note: "장소(존재)/시간",   level: "beginner" },
+      { id: "p5",  label: "에서",    note: "장소(동작이 일어나는 곳)", level: "beginner" },
+      { id: "p6",  label: "에게",    note: "대상",              level: "beginner" },
+      { id: "p7",  label: "부터",    note: "시작점",            level: "beginner" },
+      { id: "p8",  label: "까지",    note: "도착점/한계",       level: "beginner" },
+      { id: "p9",  label: "(으)로",  note: "방향/수단",         level: "beginner" },
+      { id: "p10", label: "보다",    note: "비교",              level: "intermediate" },
+      { id: "p11", label: "만큼",    note: "정도",              level: "intermediate" },
+      { id: "p12", label: "조차",    note: "극단 포함",         level: "advanced" },
+      { id: "p13", label: "마저",    note: "마지막 하나까지",   level: "advanced" },
     ],
   },
   {
@@ -23,9 +47,18 @@ const SEED_LIBRARY = [
     name: "문법",
     color: "amber",
     items: [
-      { id: "g1", label: "-고 있다", note: "진행" },
-      { id: "g2", label: "-아/어 보다", note: "시도" },
-      { id: "g3", label: "-(으)ㄹ 것 같다", note: "추측 표현/불확실" },
+      { id: "g1",  label: "-고 있다",        note: "진행",           level: "beginner" },
+      { id: "g2",  label: "-아/어 보다",     note: "시도",           level: "beginner" },
+      { id: "g3",  label: "-(으)ㄹ 것 같다", note: "미래 추측/계획", level: "beginner" },
+      { id: "g4",  label: "-고 싶다",        note: "희망",           level: "beginner" },
+      { id: "g5",  label: "-(으)세요",       note: "명령/요청",      level: "beginner" },
+      { id: "g6",  label: "-지 마세요",      note: "금지",           level: "beginner" },
+      { id: "g7",  label: "-(으)면",         note: "조건",           level: "beginner" },
+      { id: "g8",  label: "-는 바람에",      note: "부정적 원인",    level: "intermediate" },
+      { id: "g9",  label: "-더니",           note: "회상+결과",      level: "intermediate" },
+      { id: "g10", label: "-느니",           note: "선택(차라리)",   level: "advanced" },
+      { id: "g11", label: "-(으)ㄹ지언정",   note: "양보",           level: "advanced" },
+      { id: "g12", label: "-기 마련이다",    note: "당연함",         level: "advanced" },
     ],
   },
   {
@@ -33,8 +66,12 @@ const SEED_LIBRARY = [
     name: "오류 유형",
     color: "rose",
     items: [
-      { id: "e1", label: "조사 오류", note: "조사 선택 오류" },
-      { id: "e2", label: "시제 사용 오류", note: "시제 사용의 오류" },
+      { id: "e1", label: "조사 오류",       note: "조사 선택/누락",       level: "beginner" },
+      { id: "e2", label: "시제 사용 오류",  note: "시제 혼동",            level: "beginner" },
+      { id: "e3", label: "어순 오류",       note: "문장 성분 배치",       level: "beginner" },
+      { id: "e4", label: "불규칙 활용 오류", note: "ㅂ/ㄷ/르 불규칙",     level: "intermediate" },
+      { id: "e5", label: "연결어미 오류",   note: "-아서/-니까 혼동",     level: "intermediate" },
+      { id: "e6", label: "높임법 오류",     note: "주체높임 -(으)시- 누락", level: "advanced" },
     ],
   },
 ];
@@ -77,6 +114,20 @@ export default function QuizItemManager() {
     );
   };
 
+  // 난이도 변경 시 다른 급수 선택 항목 자동 해제
+  const handleDifficultyChange = (newLevel) => {
+    setDifficulty(newLevel);
+    setSelectedIds(prev => {
+      const validIds = [];
+      library.forEach(cat =>
+        cat.items.forEach(item => {
+          if (item.level === newLevel && prev.includes(item.id)) validIds.push(item.id);
+        })
+      );
+      return validIds;
+    });
+  };
+
   const addCategory = () => {
     const name = newCatName.trim();
     if (!name) return;
@@ -105,11 +156,15 @@ export default function QuizItemManager() {
     setLibrary(prev =>
       prev.map(c =>
         c.id === catId
-          ? { ...c, items: [...c.items, { id, label, note: draft?.note?.trim() || "" }] }
+          ? { ...c, items: [...c.items, {
+              id, label,
+              note:  draft?.note?.trim() || "",
+              level: draft?.level || "beginner",
+            }] }
           : c
       )
     );
-    setDraftItem(prev => ({ ...prev, [catId]: { label: "", note: "" } }));
+    setDraftItem(prev => ({ ...prev, [catId]: { label: "", note: "", level: draft?.level || "beginner" } }));
   };
 
   const removeItem = (catId, itemId) => {
@@ -129,14 +184,12 @@ export default function QuizItemManager() {
     return labels;
   };
 
-  // ── Firebase Auth에서 ID 토큰 가져오기 ───────────────────────
   const getIdToken = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) throw new Error("로그인이 필요해요.");
     return currentUser.getIdToken();
   };
 
-  // ── 퀴즈 생성 ─────────────────────────────────────────────────
   const generateQuiz = async () => {
     if (selectedIds.length === 0) return;
     setIsGenerating(true);
@@ -166,13 +219,13 @@ export default function QuizItemManager() {
       }
       setQuizResult(data);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "네트워크 오류가 발생했어요."; setGenError(msg);
+      const msg = e instanceof Error ? e.message : "네트워크 오류가 발생했어요.";
+      setGenError(msg);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // ── 퀴즈 게시: 학생용 링크 생성 ──────────────────────────────
   const publishQuiz = async () => {
     if (!quizResult?.quizId) return;
     setIsPublishing(true);
@@ -198,6 +251,9 @@ export default function QuizItemManager() {
 
   const selectedCount = selectedIds.length;
   const chalkCost = Math.max(3, Math.ceil(count / 2));
+
+  // ── 현재 난이도에 해당하는 항목만 필터 ──────────────────────────
+  const getVisibleItems = (cat) => cat.items.filter(item => item.level === difficulty);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -263,9 +319,12 @@ export default function QuizItemManager() {
                       <div className="mb-3 space-y-2">
                         {cat.items.map(item => (
                           <div key={item.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                            <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${LEVEL_BADGE[item.level] || LEVEL_BADGE.beginner}`}>
+                                {LEVEL_LABEL[item.level] || "초"}
+                              </span>
                               <span className="text-sm font-medium text-slate-800">{item.label}</span>
-                              {item.note && <span className="ml-2 text-xs text-slate-400">{item.note}</span>}
+                              {item.note && <span className="text-xs text-slate-400">{item.note}</span>}
                             </div>
                             <button onClick={() => removeItem(cat.id, item.id)}
                               className="rounded p-1 text-slate-300 hover:text-rose-500">
@@ -277,7 +336,13 @@ export default function QuizItemManager() {
                           <p className="py-2 text-xs text-slate-400">아직 등록된 항목이 없어요.</p>
                         )}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
+                        <select
+                          value={draftItem[cat.id]?.level || "beginner"}
+                          onChange={e => setDraftItem(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], level: e.target.value } }))}
+                          className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none ring-slate-300 focus:ring-2">
+                          {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                        </select>
                         <input value={draftItem[cat.id]?.label || ""}
                           onChange={e => setDraftItem(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], label: e.target.value } }))}
                           placeholder="항목 (예: 에/에서)"
@@ -286,7 +351,7 @@ export default function QuizItemManager() {
                           onChange={e => setDraftItem(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], note: e.target.value } }))}
                           onKeyDown={e => e.key === "Enter" && addItem(cat.id)}
                           placeholder="설명 (선택)"
-                          className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none ring-slate-300 focus:ring-2" />
+                          className="flex-1 min-w-[120px] rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none ring-slate-300 focus:ring-2" />
                         <button onClick={() => addItem(cat.id)}
                           className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
                           추가
@@ -305,13 +370,19 @@ export default function QuizItemManager() {
           <div className="space-y-4">
             <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex-1 min-w-[140px]">
-                <label className="mb-1 block text-xs font-medium text-slate-500">난이도</label>
-                <select value={difficulty} onChange={e => setDifficulty(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none ring-slate-300 focus:ring-2">
-                  <option value="beginner">초급</option>
-                  <option value="intermediate">중급</option>
-                  <option value="advanced">고급</option>
-                </select>
+                <label className="mb-1 block text-xs font-medium text-slate-500">난이도 (급수별 항목 표시)</label>
+                <div className="flex gap-1.5">
+                  {LEVELS.map(l => (
+                    <button key={l.value} onClick={() => handleDifficultyChange(l.value)}
+                      className={`flex-1 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                        difficulty === l.value
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                      }`}>
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="w-28">
                 <label className="mb-1 block text-xs font-medium text-slate-500">문항 수</label>
@@ -323,17 +394,23 @@ export default function QuizItemManager() {
 
             {library.map(cat => {
               const colors = COLOR_MAP[cat.color] || COLOR_MAP.slate;
+              const visibleItems = getVisibleItems(cat);
+              if (visibleItems.length === 0) return null;  // 해당 급수 항목 없으면 카테고리 숨김
               return (
                 <div key={cat.id} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="mb-3 flex items-center gap-2">
                     <span className={`h-2 w-2 rounded-full ${colors.dot}`} />
                     <h3 className="text-sm font-semibold text-slate-800">{cat.name}</h3>
+                    <span className="text-xs text-slate-400">
+                      {LEVELS.find(l => l.value === difficulty)?.label} {visibleItems.length}개
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {cat.items.map(item => {
+                    {visibleItems.map(item => {
                       const isSelected = selectedIds.includes(item.id);
                       return (
                         <button key={item.id} onClick={() => toggleSelect(item.id)}
+                          title={item.note}
                           className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
                             isSelected
                               ? `${colors.chip} ring-2 ${colors.ring}`
@@ -343,13 +420,18 @@ export default function QuizItemManager() {
                         </button>
                       );
                     })}
-                    {cat.items.length === 0 && (
-                      <p className="text-xs text-slate-400">관리자 설정에서 항목을 먼저 추가해주세요.</p>
-                    )}
                   </div>
                 </div>
               );
             })}
+
+            {/* 해당 급수에 항목이 하나도 없을 때 */}
+            {library.every(cat => getVisibleItems(cat).length === 0) && (
+              <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+                {LEVELS.find(l => l.value === difficulty)?.label} 항목이 아직 없어요.
+                <br />관리자 설정에서 추가해주세요.
+              </div>
+            )}
 
             {/* 하단 생성 바 */}
             <div className="sticky bottom-4 flex items-center justify-between rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
@@ -386,7 +468,6 @@ export default function QuizItemManager() {
                   <span className="text-xs text-slate-400">분필 {quizResult.chalkSpent}개 사용됨</span>
                 </div>
 
-                {/* 게시 / 공유 링크 */}
                 {!shareInfo ? (
                   <button onClick={publishQuiz} disabled={isPublishing}
                     className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">
