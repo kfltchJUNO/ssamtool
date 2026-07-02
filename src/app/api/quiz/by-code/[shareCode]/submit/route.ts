@@ -6,14 +6,22 @@ import { FieldValue } from "firebase-admin/firestore";
 
 type SubmittedAnswer = { index: number; value: string };
 
+interface RawQuestion {
+  type:        string;
+  question:    string;
+  choices?:    string[];
+  answer:      string;
+  explanation: string;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { shareCode: string } }
 ) {
   const { shareCode } = params;
   const body = await req.json();
-  const studentName: string = body.studentName;
-  const answers: SubmittedAnswer[] = body.answers;
+  const studentName: string          = body.studentName;
+  const answers:     SubmittedAnswer[] = body.answers;
 
   if (!studentName?.trim() || !Array.isArray(answers)) {
     return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
@@ -21,46 +29,48 @@ export async function POST(
 
   const snap = await adminDb
     .collection("quizzes")
-    .where("shareCode", "==", shareCode)
+    .where("shareCode",   "==", shareCode)
     .where("isPublished", "==", true)
     .limit(1)
     .get();
 
   if (snap.empty) {
     return NextResponse.json(
-      { error: "유효하지 않거나 종료된 퀴즈 링크입니다." },
+      { error: "유효하지 않거나 만료된 퀴즈 링크입니다." },
       { status: 403 }
     );
   }
 
-  const doc = snap.docs[0];
+  const doc  = snap.docs[0];
   const quiz = doc.data();
-  const questions: any[] = quiz.questions || [];
-  const answerMap = new Map<number, string>(answers.map((a) => [a.index, a.value]));
+  const questions: RawQuestion[] = (quiz.questions as RawQuestion[]) || [];
+  const answerMap = new Map<number, string>(answers.map(a => [a.index, a.value]));
 
   let correctCount = 0;
-  const results = questions.map((q, idx: number) => {
+  const results = questions.map((q, idx) => {
     const studentAnswer = answerMap.get(idx) ?? "";
     const isCorrect =
       String(studentAnswer).trim().toLowerCase() === String(q.answer).trim().toLowerCase();
     if (isCorrect) correctCount += 1;
     return {
-      index: idx,
-      question: q.question as string,
+      index:         idx,
+      question:      q.question,
       studentAnswer,
-      correctAnswer: q.answer as string,
+      correctAnswer: q.answer,
       isCorrect,
-      explanation: q.explanation as string,
+      explanation:   q.explanation,
     };
   });
 
-  const score = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
+  const score = questions.length > 0
+    ? Math.round((correctCount / questions.length) * 100)
+    : 0;
 
   await doc.ref.collection("attempts").add({
     studentName: studentName.trim(),
     answers,
     correctCount,
-    total: questions.length,
+    total:       questions.length,
     score,
     submittedAt: FieldValue.serverTimestamp(),
   });

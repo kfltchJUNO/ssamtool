@@ -13,9 +13,9 @@ export class InsufficientCreditsError extends Error {
 }
 
 type ChalkEvent = {
-  amount: number;
+  amount:    number;
   expiresAt: Timestamp;
-  reason?: string;
+  reason?:   string;
 };
 
 /**
@@ -30,7 +30,7 @@ export async function deductCredits(uid: string, amount: number, reason: string)
     const snap = await tx.get(userRef);
     if (!snap.exists) throw new Error("USER_NOT_FOUND");
     const data = snap.data()!;
-    const now = Timestamp.now();
+    const now  = Timestamp.now();
 
     const chalkEvents: ChalkEvent[] = data.chalkEvents || [];
     const validEventBalance = chalkEvents.reduce((sum, e) => {
@@ -38,7 +38,7 @@ export async function deductCredits(uid: string, amount: number, reason: string)
       return isValid ? sum + Math.max(0, e.amount || 0) : sum;
     }, 0);
     const permanentBalance = data.chalk || 0;
-    const totalAvailable = validEventBalance + permanentBalance;
+    const totalAvailable   = validEventBalance + permanentBalance;
 
     if (totalAvailable < amount) {
       throw new InsufficientCreditsError();
@@ -60,7 +60,7 @@ export async function deductCredits(uid: string, amount: number, reason: string)
       .filter((e) => e.amount > 0 || (e.expiresAt && e.expiresAt.toMillis() <= now.toMillis()));
 
     // 2) 남은 만큼 일반 분필(chalk) 차감
-    const updates: Record<string, any> = { chalkEvents: updatedEvents };
+    const updates: Record<string, unknown> = { chalkEvents: updatedEvents };
     if (remaining > 0) {
       updates.chalk = FieldValue.increment(-remaining);
     }
@@ -70,7 +70,7 @@ export async function deductCredits(uid: string, amount: number, reason: string)
     const logRef = adminDb.collection("chalkLogs").doc();
     tx.set(logRef, {
       uid,
-      amount: -amount,
+      amount:    -amount,
       reason,
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -79,14 +79,14 @@ export async function deductCredits(uid: string, amount: number, reason: string)
   });
 }
 
-/** 실패 시 환불. 이벤트 분필 환불은 만료 로직이 복잡해지므로 일반 분필(chalk)로 통일해서 되돌림. */
+/** 실패 시 환불. 이벤트 분필 환불은 만료 로직이 복잡하므로 일반 분필(chalk)로 통일해서 되돌림 */
 export async function refundCredits(uid: string, amount: number, reason: string) {
   const userRef = adminDb.collection("users").doc(uid);
   await userRef.update({ chalk: FieldValue.increment(amount) });
   await adminDb.collection("chalkLogs").add({
     uid,
     amount,
-    reason: `환불: ${reason}`,
+    reason:    `환불: ${reason}`,
     createdAt: FieldValue.serverTimestamp(),
   });
 }
