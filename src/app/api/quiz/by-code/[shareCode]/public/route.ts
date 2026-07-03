@@ -17,7 +17,7 @@ export async function GET(
   const { shareCode } = params;
 
   const snap = await adminDb
-    .collection("quizzes")
+    .collection("ssamtoolQuizzes")
     .where("shareCode",   "==", shareCode)
     .where("isPublished", "==", true)
     .limit(1)

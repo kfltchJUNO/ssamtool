@@ -1,80 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Plus, X, Settings2, Sparkles, ChevronDown, ChevronRight,
-  Trash2, Loader2, CheckCircle2, AlertCircle,
+  Trash2, Loader2, CheckCircle2, AlertCircle, Database,
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
+import {
+  loadLibrary, saveCategory, deleteCategoryDoc, seedLibraryIfEmpty,
+} from "@/lib/quizLibrary";
 
 // ── 급수 정의 ─────────────────────────────────────────────────────
 const LEVELS = [
-  { value: "beginner",     label: "초급" },
-  { value: "intermediate", label: "중급" },
-  { value: "advanced",     label: "고급" },
+  { value: "beginner",     label: "초급", short: "초" },
+  { value: "intermediate", label: "중급", short: "중" },
+  { value: "advanced",     label: "고급", short: "고" },
 ];
 
-const LEVEL_BADGE = {
-  beginner:     "bg-green-50 text-green-600 border-green-200",
-  intermediate: "bg-blue-50 text-blue-600 border-blue-200",
-  advanced:     "bg-purple-50 text-purple-600 border-purple-200",
+const LEVEL_BADGE_ON = {
+  beginner:     "bg-green-100 text-green-700 border-green-300",
+  intermediate: "bg-blue-100 text-blue-700 border-blue-300",
+  advanced:     "bg-purple-100 text-purple-700 border-purple-300",
 };
-
-const LEVEL_LABEL = { beginner: "초", intermediate: "중", advanced: "고" };
-
-// ── 기본 시드 데이터 (급수 태그 포함) ─────────────────────────────
-const SEED_LIBRARY = [
-  {
-    id: "cat-particle",
-    name: "조사",
-    color: "indigo",
-    items: [
-      { id: "p1",  label: "이/가",   note: "주격",              level: "beginner" },
-      { id: "p2",  label: "은/는",   note: "주제/대조",         level: "beginner" },
-      { id: "p3",  label: "을/를",   note: "목적격",            level: "beginner" },
-      { id: "p4",  label: "에",      note: "장소(존재)/시간",   level: "beginner" },
-      { id: "p5",  label: "에서",    note: "장소(동작이 일어나는 곳)", level: "beginner" },
-      { id: "p6",  label: "에게",    note: "대상",              level: "beginner" },
-      { id: "p7",  label: "부터",    note: "시작점",            level: "beginner" },
-      { id: "p8",  label: "까지",    note: "도착점/한계",       level: "beginner" },
-      { id: "p9",  label: "(으)로",  note: "방향/수단",         level: "beginner" },
-      { id: "p10", label: "보다",    note: "비교",              level: "intermediate" },
-      { id: "p11", label: "만큼",    note: "정도",              level: "intermediate" },
-      { id: "p12", label: "조차",    note: "극단 포함",         level: "advanced" },
-      { id: "p13", label: "마저",    note: "마지막 하나까지",   level: "advanced" },
-    ],
-  },
-  {
-    id: "cat-grammar",
-    name: "문법",
-    color: "amber",
-    items: [
-      { id: "g1",  label: "-고 있다",        note: "진행",           level: "beginner" },
-      { id: "g2",  label: "-아/어 보다",     note: "시도",           level: "beginner" },
-      { id: "g3",  label: "-(으)ㄹ 것 같다", note: "미래 추측/계획", level: "beginner" },
-      { id: "g4",  label: "-고 싶다",        note: "희망",           level: "beginner" },
-      { id: "g5",  label: "-(으)세요",       note: "명령/요청",      level: "beginner" },
-      { id: "g6",  label: "-지 마세요",      note: "금지",           level: "beginner" },
-      { id: "g7",  label: "-(으)면",         note: "조건",           level: "beginner" },
-      { id: "g8",  label: "-는 바람에",      note: "부정적 원인",    level: "intermediate" },
-      { id: "g9",  label: "-더니",           note: "회상+결과",      level: "intermediate" },
-      { id: "g10", label: "-느니",           note: "선택(차라리)",   level: "advanced" },
-      { id: "g11", label: "-(으)ㄹ지언정",   note: "양보",           level: "advanced" },
-      { id: "g12", label: "-기 마련이다",    note: "당연함",         level: "advanced" },
-    ],
-  },
-  {
-    id: "cat-error",
-    name: "오류 유형",
-    color: "rose",
-    items: [
-      { id: "e1", label: "조사 오류",       note: "조사 선택/누락",       level: "beginner" },
-      { id: "e2", label: "시제 사용 오류",  note: "시제 혼동",            level: "beginner" },
-      { id: "e3", label: "어순 오류",       note: "문장 성분 배치",       level: "beginner" },
-      { id: "e4", label: "불규칙 활용 오류", note: "ㅂ/ㄷ/르 불규칙",     level: "intermediate" },
-      { id: "e5", label: "연결어미 오류",   note: "-아서/-니까 혼동",     level: "intermediate" },
-      { id: "e6", label: "높임법 오류",     note: "주체높임 -(으)시- 누락", level: "advanced" },
-    ],
-  },
-];
+const LEVEL_BADGE_OFF = "bg-white text-slate-300 border-slate-200";
 
 const COLOR_MAP = {
   indigo: { chip: "bg-indigo-50 text-indigo-700 border-indigo-200", dot: "bg-indigo-500", ring: "ring-indigo-500" },
@@ -82,14 +29,23 @@ const COLOR_MAP = {
   rose:   { chip: "bg-rose-50 text-rose-700 border-rose-200",      dot: "bg-rose-500",   ring: "ring-rose-500"   },
   slate:  { chip: "bg-slate-50 text-slate-700 border-slate-200",   dot: "bg-slate-400",  ring: "ring-slate-400"  },
 };
-
 const COLOR_KEYS = Object.keys(COLOR_MAP);
 
+const normalizeLevels = (item) => {
+  if (Array.isArray(item.levels) && item.levels.length > 0) return item.levels;
+  if (item.level) return [item.level];
+  return ["beginner"];
+};
+
 export default function QuizItemManager() {
+  const { user, admin } = useAuth();
   const [mode,         setMode]         = useState("select");
-  const [library,      setLibrary]      = useState(SEED_LIBRARY);
+  const [library,      setLibrary]      = useState([]);
+  const [libLoading,   setLibLoading]   = useState(true);
+  const [libError,     setLibError]     = useState("");
+  const [saving,       setSaving]       = useState(false);
   const [selectedIds,  setSelectedIds]  = useState([]);
-  const [expanded,     setExpanded]     = useState(() => new Set(SEED_LIBRARY.map(c => c.id)));
+  const [expanded,     setExpanded]     = useState(new Set());
   const [difficulty,   setDifficulty]   = useState("beginner");
   const [count,        setCount]        = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -99,6 +55,55 @@ export default function QuizItemManager() {
   const [shareInfo,    setShareInfo]    = useState(null);
   const [newCatName,   setNewCatName]   = useState("");
   const [draftItem,    setDraftItem]    = useState({});
+
+  // ── 라이브러리 로드 ───────────────────────────────────────────
+  const reload = async () => {
+    setLibLoading(true);
+    setLibError("");
+    try {
+      const cats = await loadLibrary();
+      setLibrary(cats);
+      setExpanded(new Set(cats.map(c => c.id)));
+    } catch (e) {
+      console.error(e);
+      setLibError("라이브러리를 불러오지 못했어요.");
+    } finally {
+      setLibLoading(false);
+    }
+  };
+  useEffect(() => { reload(); }, []);
+
+  // ── 시드 초기화 (관리자, 라이브러리 비어있을 때) ──────────────
+  const handleSeed = async () => {
+    setSaving(true);
+    try {
+      const seeded = await seedLibraryIfEmpty();
+      if (seeded) await reload();
+    } catch (e) {
+      console.error(e);
+      setLibError("초기화에 실패했어요. 권한을 확인해주세요.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── 공통: 카테고리 변경 + Firestore 저장 ─────────────────────
+  const mutateCategory = async (catId, updater) => {
+    const target = library.find(c => c.id === catId);
+    if (!target) return;
+    const next = updater(target);
+    setLibrary(prev => prev.map(c => (c.id === catId ? next : c)));
+    setSaving(true);
+    try {
+      await saveCategory(next);
+    } catch (e) {
+      console.error(e);
+      setLibError("저장에 실패했어요. 권한을 확인해주세요.");
+      await reload(); // 실패 시 서버 상태로 롤백
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const toggleExpand = catId => {
     setExpanded(prev => {
@@ -114,64 +119,116 @@ export default function QuizItemManager() {
     );
   };
 
-  // 난이도 변경 시 다른 급수 선택 항목 자동 해제
   const handleDifficultyChange = (newLevel) => {
     setDifficulty(newLevel);
     setSelectedIds(prev => {
       const validIds = [];
       library.forEach(cat =>
         cat.items.forEach(item => {
-          if (item.level === newLevel && prev.includes(item.id)) validIds.push(item.id);
+          if (normalizeLevels(item).includes(newLevel) && prev.includes(item.id)) {
+            validIds.push(item.id);
+          }
         })
       );
       return validIds;
     });
   };
 
-  const addCategory = () => {
+  // ── 카테고리 추가 ─────────────────────────────────────────────
+  const addCategory = async () => {
     const name = newCatName.trim();
     if (!name) return;
     const usedColors = library.map(c => c.color);
     const color = COLOR_KEYS.find(c => !usedColors.includes(c)) || "slate";
     const id = `cat-${Date.now()}`;
-    setLibrary(prev => [...prev, { id, name, color, items: [] }]);
+    const newCat = { id, name, color, order: library.length, items: [] };
+    setLibrary(prev => [...prev, newCat]);
     setExpanded(prev => new Set(prev).add(id));
     setNewCatName("");
+    setSaving(true);
+    try {
+      await saveCategory(newCat);
+    } catch (e) {
+      console.error(e);
+      setLibError("저장에 실패했어요.");
+      await reload();
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const removeCategory = catId => {
+  // ── 카테고리 삭제 ─────────────────────────────────────────────
+  const removeCategory = async (catId) => {
+    if (!confirm("카테고리와 안의 모든 항목이 삭제돼요. 계속할까요?")) return;
+    const cat = library.find(c => c.id === catId);
+    const ids = cat ? cat.items.map(i => i.id) : [];
     setLibrary(prev => prev.filter(c => c.id !== catId));
-    setSelectedIds(prev => {
-      const cat = library.find(c => c.id === catId);
-      const ids = cat ? cat.items.map(i => i.id) : [];
-      return prev.filter(id => !ids.includes(id));
+    setSelectedIds(prev => prev.filter(id => !ids.includes(id)));
+    setSaving(true);
+    try {
+      await deleteCategoryDoc(catId);
+    } catch (e) {
+      console.error(e);
+      setLibError("삭제에 실패했어요.");
+      await reload();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleDraftLevel = (catId, level) => {
+    setDraftItem(prev => {
+      const current = prev[catId]?.levels || ["beginner"];
+      const next = current.includes(level)
+        ? current.filter(l => l !== level)
+        : [...current, level];
+      return { ...prev, [catId]: { ...prev[catId], levels: next.length ? next : current } };
     });
   };
 
-  const addItem = catId => {
+  // ── 항목 추가 ─────────────────────────────────────────────────
+  const addItem = (catId) => {
     const draft = draftItem[catId];
     const label = draft?.label?.trim();
     if (!label) return;
     const id = `item-${Date.now()}`;
-    setLibrary(prev =>
-      prev.map(c =>
-        c.id === catId
-          ? { ...c, items: [...c.items, {
-              id, label,
-              note:  draft?.note?.trim() || "",
-              level: draft?.level || "beginner",
-            }] }
-          : c
-      )
-    );
-    setDraftItem(prev => ({ ...prev, [catId]: { label: "", note: "", level: draft?.level || "beginner" } }));
+    mutateCategory(catId, cat => ({
+      ...cat,
+      items: [...cat.items, {
+        id, label,
+        note:   draft?.note?.trim() || "",
+        levels: draft?.levels?.length ? draft.levels : ["beginner"],
+      }],
+    }));
+    setDraftItem(prev => ({
+      ...prev,
+      [catId]: { label: "", note: "", levels: draft?.levels || ["beginner"] },
+    }));
   };
 
+  // ── 항목 삭제 ─────────────────────────────────────────────────
   const removeItem = (catId, itemId) => {
-    setLibrary(prev =>
-      prev.map(c => c.id === catId ? { ...c, items: c.items.filter(i => i.id !== itemId) } : c)
-    );
+    mutateCategory(catId, cat => ({
+      ...cat,
+      items: cat.items.filter(i => i.id !== itemId),
+    }));
     setSelectedIds(prev => prev.filter(id => id !== itemId));
+  };
+
+  // ── 항목 급수 토글 ────────────────────────────────────────────
+  const toggleItemLevel = (catId, itemId, level) => {
+    mutateCategory(catId, cat => ({
+      ...cat,
+      items: cat.items.map(item => {
+        if (item.id !== itemId) return item;
+        const current = normalizeLevels(item);
+        const next = current.includes(level)
+          ? current.filter(l => l !== level)
+          : [...current, level];
+        if (next.length === 0) return item;  // 최소 1개 유지
+        return { ...item, levels: next };
+      }),
+    }));
   };
 
   const getSelectedLabels = () => {
@@ -251,9 +308,19 @@ export default function QuizItemManager() {
 
   const selectedCount = selectedIds.length;
   const chalkCost = Math.max(3, Math.ceil(count / 2));
+  const getVisibleItems = (cat) =>
+    cat.items.filter(item => normalizeLevels(item).includes(difficulty));
 
-  // ── 현재 난이도에 해당하는 항목만 필터 ──────────────────────────
-  const getVisibleItems = (cat) => cat.items.filter(item => item.level === difficulty);
+  // ── 로딩 화면 ─────────────────────────────────────────────────
+  if (libLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex items-center gap-2 text-slate-400 text-sm">
+          <Loader2 size={18} className="animate-spin" /> 라이브러리 불러오는 중...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -262,7 +329,10 @@ export default function QuizItemManager() {
         {/* 헤더 */}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <p className="text-xs font-medium tracking-wide text-slate-400">쌤툴 · 퀴즈 생성</p>
+            <p className="text-xs font-medium tracking-wide text-slate-400">
+              쌤툴 · 퀴즈 생성
+              {saving && <span className="ml-2 text-indigo-400">저장 중...</span>}
+            </p>
             <h1 className="text-xl font-bold text-slate-900">문법 항목 라이브러리</h1>
           </div>
           <div className="flex rounded-lg border border-slate-200 bg-white p-1 text-sm">
@@ -272,18 +342,46 @@ export default function QuizItemManager() {
               }`}>
               <Sparkles size={14} /> 퀴즈 생성
             </button>
-            <button onClick={() => setMode("admin")}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition ${
-                mode === "admin" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-800"
-              }`}>
-              <Settings2 size={14} /> 관리자 설정
-            </button>
+            {admin && (
+              <button onClick={() => setMode("admin")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition ${
+                  mode === "admin" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-800"
+                }`}>
+                <Settings2 size={14} /> 관리자 설정
+              </button>
+            )}
           </div>
         </div>
 
+        {libError && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+            <AlertCircle size={16} /> {libError}
+          </div>
+        )}
+
+        {/* 라이브러리 비어있음 — 시드 초기화 (관리자) */}
+        {library.length === 0 && (
+          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
+            <Database size={32} className="mx-auto mb-3 text-slate-300" />
+            <p className="text-sm text-slate-500 mb-4">아직 등록된 항목이 없어요.</p>
+            {admin ? (
+              <button onClick={handleSeed} disabled={saving}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
+                {saving ? "초기화 중..." : "기본 항목(동국 2A) 불러오기"}
+              </button>
+            ) : (
+              <p className="text-xs text-slate-400">관리자가 항목을 등록하면 사용할 수 있어요.</p>
+            )}
+          </div>
+        )}
+
         {/* ── 관리자 모드 ── */}
-        {mode === "admin" && (
+        {mode === "admin" && admin && library.length > 0 && (
           <div className="space-y-4">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-xs text-blue-600">
+              💡 항목 옆의 <b>초/중/고</b> 뱃지를 클릭하면 급수를 켜고 끌 수 있어요. 변경은 자동 저장돼요.
+            </div>
+
             <div className="flex gap-2">
               <input value={newCatName} onChange={e => setNewCatName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && addCategory()}
@@ -298,6 +396,7 @@ export default function QuizItemManager() {
             {library.map(cat => {
               const colors = COLOR_MAP[cat.color] || COLOR_MAP.slate;
               const isOpen = expanded.has(cat.id);
+              const draftLevels = draftItem[cat.id]?.levels || ["beginner"];
               return (
                 <div key={cat.id} className="rounded-xl border border-slate-200 bg-white">
                   <div className="flex items-center justify-between px-4 py-3">
@@ -317,45 +416,72 @@ export default function QuizItemManager() {
                   {isOpen && (
                     <div className="border-t border-slate-100 px-4 py-3">
                       <div className="mb-3 space-y-2">
-                        {cat.items.map(item => (
-                          <div key={item.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${LEVEL_BADGE[item.level] || LEVEL_BADGE.beginner}`}>
-                                {LEVEL_LABEL[item.level] || "초"}
-                              </span>
-                              <span className="text-sm font-medium text-slate-800">{item.label}</span>
-                              {item.note && <span className="text-xs text-slate-400">{item.note}</span>}
+                        {cat.items.map(item => {
+                          const itemLevels = normalizeLevels(item);
+                          return (
+                            <div key={item.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex gap-0.5">
+                                  {LEVELS.map(l => {
+                                    const active = itemLevels.includes(l.value);
+                                    return (
+                                      <button key={l.value}
+                                        onClick={() => toggleItemLevel(cat.id, item.id, l.value)}
+                                        title={`${l.label} ${active ? "해제" : "추가"}`}
+                                        className={`rounded border px-1.5 py-0.5 text-[10px] font-bold transition ${
+                                          active ? LEVEL_BADGE_ON[l.value] : LEVEL_BADGE_OFF
+                                        }`}>
+                                        {l.short}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <span className="text-sm font-medium text-slate-800">{item.label}</span>
+                                {item.note && <span className="text-xs text-slate-400">{item.note}</span>}
+                              </div>
+                              <button onClick={() => removeItem(cat.id, item.id)}
+                                className="rounded p-1 text-slate-300 hover:text-rose-500">
+                                <X size={14} />
+                              </button>
                             </div>
-                            <button onClick={() => removeItem(cat.id, item.id)}
-                              className="rounded p-1 text-slate-300 hover:text-rose-500">
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                         {cat.items.length === 0 && (
                           <p className="py-2 text-xs text-slate-400">아직 등록된 항목이 없어요.</p>
                         )}
                       </div>
-                      <div className="flex gap-2 flex-wrap">
-                        <select
-                          value={draftItem[cat.id]?.level || "beginner"}
-                          onChange={e => setDraftItem(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], level: e.target.value } }))}
-                          className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none ring-slate-300 focus:ring-2">
-                          {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                        </select>
-                        <input value={draftItem[cat.id]?.label || ""}
-                          onChange={e => setDraftItem(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], label: e.target.value } }))}
-                          placeholder="항목 (예: 에/에서)"
-                          className="w-32 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none ring-slate-300 focus:ring-2" />
-                        <input value={draftItem[cat.id]?.note || ""}
-                          onChange={e => setDraftItem(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], note: e.target.value } }))}
-                          onKeyDown={e => e.key === "Enter" && addItem(cat.id)}
-                          placeholder="설명 (선택)"
-                          className="flex-1 min-w-[120px] rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none ring-slate-300 focus:ring-2" />
-                        <button onClick={() => addItem(cat.id)}
-                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                          추가
-                        </button>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-medium text-slate-400">급수 선택 (복수 가능):</span>
+                          {LEVELS.map(l => {
+                            const active = draftLevels.includes(l.value);
+                            return (
+                              <button key={l.value}
+                                onClick={() => toggleDraftLevel(cat.id, l.value)}
+                                className={`rounded border px-2 py-0.5 text-[11px] font-bold transition ${
+                                  active ? LEVEL_BADGE_ON[l.value] : LEVEL_BADGE_OFF
+                                }`}>
+                                {l.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex gap-2">
+                          <input value={draftItem[cat.id]?.label || ""}
+                            onChange={e => setDraftItem(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], label: e.target.value } }))}
+                            placeholder="항목 (예: 에/에서)"
+                            className="w-32 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none ring-slate-300 focus:ring-2" />
+                          <input value={draftItem[cat.id]?.note || ""}
+                            onChange={e => setDraftItem(prev => ({ ...prev, [cat.id]: { ...prev[cat.id], note: e.target.value } }))}
+                            onKeyDown={e => e.key === "Enter" && addItem(cat.id)}
+                            placeholder="설명 (선택)"
+                            className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none ring-slate-300 focus:ring-2" />
+                          <button onClick={() => addItem(cat.id)}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                            추가
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -366,7 +492,7 @@ export default function QuizItemManager() {
         )}
 
         {/* ── 선택 모드 (강사용) ── */}
-        {mode === "select" && (
+        {mode === "select" && library.length > 0 && (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex-1 min-w-[140px]">
@@ -395,7 +521,7 @@ export default function QuizItemManager() {
             {library.map(cat => {
               const colors = COLOR_MAP[cat.color] || COLOR_MAP.slate;
               const visibleItems = getVisibleItems(cat);
-              if (visibleItems.length === 0) return null;  // 해당 급수 항목 없으면 카테고리 숨김
+              if (visibleItems.length === 0) return null;
               return (
                 <div key={cat.id} className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="mb-3 flex items-center gap-2">
@@ -425,11 +551,9 @@ export default function QuizItemManager() {
               );
             })}
 
-            {/* 해당 급수에 항목이 하나도 없을 때 */}
             {library.every(cat => getVisibleItems(cat).length === 0) && (
               <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
                 {LEVELS.find(l => l.value === difficulty)?.label} 항목이 아직 없어요.
-                <br />관리자 설정에서 추가해주세요.
               </div>
             )}
 
@@ -444,7 +568,7 @@ export default function QuizItemManager() {
                   </button>
                 )}
               </span>
-              <button onClick={generateQuiz} disabled={selectedCount === 0 || isGenerating}
+              <button onClick={generateQuiz} disabled={selectedCount === 0 || isGenerating || !user}
                 className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
                 {isGenerating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
                 {isGenerating ? "생성 중..." : `퀴즈 생성 (분필 ${chalkCost}개)`}
@@ -453,8 +577,7 @@ export default function QuizItemManager() {
 
             {genError && (
               <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
-                <AlertCircle size={16} />
-                {genError}
+                <AlertCircle size={16} /> {genError}
               </div>
             )}
 

@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3) Firestore 저장
-    const quizRef = adminDb.collection("quizzes").doc();
+    const quizRef = adminDb.collection("ssamtoolQuizzes").doc();
     await quizRef.set({
       title:        `${curriculum || "커스텀"} ${unit || ""} 퀴즈`.trim(),
       curriculum:   curriculum || null,

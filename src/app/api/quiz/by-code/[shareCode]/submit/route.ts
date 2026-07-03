@@ -28,7 +28,7 @@ export async function POST(
   }
 
   const snap = await adminDb
-    .collection("quizzes")
+    .collection("ssamtoolQuizzes")
     .where("shareCode",   "==", shareCode)
     .where("isPublished", "==", true)
     .limit(1)

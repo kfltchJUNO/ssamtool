@@ -23,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: { quizId: str
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
-  const quizRef = adminDb.collection("quizzes").doc(params.quizId);
+  const quizRef = adminDb.collection("ssamtoolQuizzes").doc(params.quizId);
   const snap    = await quizRef.get();
 
   if (!snap.exists) {
@@ -54,7 +54,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { quizId: s
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
 
-  const quizRef = adminDb.collection("quizzes").doc(params.quizId);
+  const quizRef = adminDb.collection("ssamtoolQuizzes").doc(params.quizId);
   const snap    = await quizRef.get();
 
   if (!snap.exists || snap.data()!.createdBy !== uid) {
