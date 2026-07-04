@@ -85,7 +85,11 @@ export async function GET(
     });
 
     // 응답에서 answers 원본은 제거 (용량 절약)
-    const attemptsSlim = attempts.map(({ answers: _answers, ...rest }) => rest);
+    const attemptsSlim = attempts.map((a) => {
+      const { answers, ...rest } = a;
+      void answers;
+      return rest;
+    });
 
     return NextResponse.json({
       title:         quiz.title ?? "",

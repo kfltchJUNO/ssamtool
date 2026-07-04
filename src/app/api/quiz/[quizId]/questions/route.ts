@@ -10,7 +10,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const REGENERATE_COST = 1;
 
 const MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.1-flash-lite"];
-let modelIdx = 0;
+const modelIdx = 0;
 const getModel = () => MODELS[modelIdx % MODELS.length];
 
 async function getUidFromRequest(req: NextRequest): Promise<string> {

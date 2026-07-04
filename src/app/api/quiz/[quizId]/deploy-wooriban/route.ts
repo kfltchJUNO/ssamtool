@@ -25,7 +25,7 @@ interface SsamtoolQuestion {
 // 우리반 사지선다 스키마(choices: string[], correctIndex: number)로 변환
 function toWoorbanQuestion(q: SsamtoolQuestion, idx: number) {
   const hasChoices = Array.isArray(q.choices) && q.choices.length > 0;
-  let choices = hasChoices ? q.choices! : null;
+  const choices = hasChoices ? q.choices! : null;
   let correctIndex = 0;
 
   if (hasChoices) {
