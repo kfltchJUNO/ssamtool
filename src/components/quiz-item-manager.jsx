@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Plus, X, Settings2, Sparkles, ChevronDown, ChevronRight,
-  Trash2, Loader2, CheckCircle2, AlertCircle, Database,
+  Trash2, Loader2, CheckCircle2, AlertCircle, Database, LogIn,
+  History, BarChart3, Copy, Link2, Link2Off, RefreshCw,
+  Printer, QrCode, RotateCcw, Trash, Send, Gift,
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
@@ -31,6 +34,61 @@ const COLOR_MAP = {
 };
 const COLOR_KEYS = Object.keys(COLOR_MAP);
 
+
+// ── 시험지 인쇄 (문제지 + 별도 정답지) ────────────────────────────
+function printQuizExam(title, questions) {
+  const qHtml = questions.map((q, i) => `
+    <div style="margin-bottom:18px;page-break-inside:avoid;">
+      <p style="font-weight:700;font-size:14px;margin:0 0 6px;">${i + 1}. ${q.question}</p>
+      ${Array.isArray(q.choices) && q.choices.length > 0
+        ? `<div style="display:flex;flex-wrap:wrap;gap:14px;padding-left:14px;">
+             ${q.choices.map(c => `<span style="font-size:13px;">${c}</span>`).join("")}
+           </div>`
+        : `<div style="border-bottom:1px solid #999;width:60%;height:22px;margin-left:14px;"></div>`}
+    </div>`).join("");
+
+  const answerHtml = questions.map((q, i) => `
+    <tr>
+      <td style="padding:6px 10px;border:1px solid #ddd;font-weight:700;">${i + 1}</td>
+      <td style="padding:6px 10px;border:1px solid #ddd;">${q.answer}</td>
+      <td style="padding:6px 10px;border:1px solid #ddd;font-size:12px;color:#555;">${q.explanation || ""}</td>
+    </tr>`).join("");
+
+  const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+    <style>
+      @page { size: A4; margin: 16mm; }
+      body { font-family: 'Noto Sans KR', sans-serif; margin: 0; color: #111; }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      .meta { font-size: 12px; color: #888; margin-bottom: 20px; }
+      .name-line { display:flex; gap:24px; font-size:13px; margin-bottom:20px; }
+      .page-break { page-break-before: always; }
+      table { width:100%; border-collapse:collapse; font-size:13px; }
+      th { padding:6px 10px; background:#F5F5F5; border:1px solid #DDD; text-align:left; }
+    </style>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap">
+  </head><body>
+    <h1>${title}</h1>
+    <div class="meta">쌤툴에서 생성됨</div>
+    <div class="name-line"><span>이름: ______________</span><span>학번: ______________</span><span>점수: ______ / ${questions.length}</span></div>
+    ${qHtml}
+
+    <div class="page-break"></div>
+    <h1>정답 및 해설</h1>
+    <table><thead><tr><th>번호</th><th>정답</th><th>해설</th></tr></thead>
+      <tbody>${answerHtml}</tbody></table>
+
+    <script>document.fonts.ready.then(()=>setTimeout(()=>{window.print();window.close();},300))</script>
+  </body></html>`;
+
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) return;
+  doc.open(); doc.write(html); doc.close();
+  iframe.contentWindow?.addEventListener("afterprint", () => document.body.removeChild(iframe));
+}
+
 const normalizeLevels = (item) => {
   if (Array.isArray(item.levels) && item.levels.length > 0) return item.levels;
   if (item.level) return [item.level];
@@ -55,6 +113,14 @@ export default function QuizItemManager() {
   const [shareInfo,    setShareInfo]    = useState(null);
   const [newCatName,   setNewCatName]   = useState("");
   const [draftItem,    setDraftItem]    = useState({});
+  const [needChalk,    setNeedChalk]    = useState(false);  // 분필 부족 → 충전 유도
+
+  // 문항 수 입력 방어: 빈 값/NaN → 5, 범위 1~20 클램프
+  const handleCountChange = (raw) => {
+    const n = parseInt(raw, 10);
+    if (isNaN(n)) { setCount(5); return; }
+    setCount(Math.min(20, Math.max(1, n)));
+  };
 
   // ── 라이브러리 로드 ───────────────────────────────────────────
   const reload = async () => {
@@ -71,7 +137,7 @@ export default function QuizItemManager() {
       setLibLoading(false);
     }
   };
-  useEffect(() => { reload(); }, []);
+  useEffect(() => { if (user) reload(); }, [user]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 시드 초기화 (관리자, 라이브러리 비어있을 때) ──────────────
   const handleSeed = async () => {
@@ -271,9 +337,13 @@ export default function QuizItemManager() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 402 || data.code === "INSUFFICIENT_CHALK") {
+          setNeedChalk(true);
+        }
         setGenError(data.error || "퀴즈 생성에 실패했어요.");
         return;
       }
+      setNeedChalk(false);
       setQuizResult(data);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "네트워크 오류가 발생했어요.";
@@ -311,6 +381,25 @@ export default function QuizItemManager() {
   const getVisibleItems = (cat) =>
     cat.items.filter(item => normalizeLevels(item).includes(difficulty));
 
+  // ── 비로그인 게이트 ───────────────────────────────────────────
+  // 라이브러리 읽기(quizLibrary)와 퀴즈 생성 모두 로그인이 필요
+  if (!user) {
+    return (
+      <div className="min-h-[400px] bg-slate-50 flex items-center justify-center rounded-xl">
+        <div className="text-center">
+          <LogIn size={32} className="mx-auto mb-3 text-slate-300" />
+          <p className="text-sm font-semibold text-slate-600 mb-1">로그인이 필요한 기능이에요</p>
+          <p className="text-xs text-slate-400 mb-4">퀴즈 생성은 로그인 후 이용할 수 있어요.</p>
+          <button
+            onClick={() => document.dispatchEvent(new CustomEvent("ssamtool:openLogin"))}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+            로그인하기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── 로딩 화면 ─────────────────────────────────────────────────
   if (libLoading) {
     return (
@@ -342,6 +431,12 @@ export default function QuizItemManager() {
               }`}>
               <Sparkles size={14} /> 퀴즈 생성
             </button>
+            <button onClick={() => setMode("myQuizzes")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition ${
+                mode === "myQuizzes" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-800"
+              }`}>
+              <History size={14} /> 내 퀴즈
+            </button>
             {admin && (
               <button onClick={() => setMode("admin")}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition ${
@@ -352,6 +447,8 @@ export default function QuizItemManager() {
             )}
           </div>
         </div>
+
+        <DailyChalkBanner getIdToken={getIdToken} />
 
         {libError && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
@@ -374,6 +471,9 @@ export default function QuizItemManager() {
             )}
           </div>
         )}
+
+        {/* ── 내 퀴즈 모드 ── */}
+        {mode === "myQuizzes" && <MyQuizzes getIdToken={getIdToken} />}
 
         {/* ── 관리자 모드 ── */}
         {mode === "admin" && admin && library.length > 0 && (
@@ -513,7 +613,7 @@ export default function QuizItemManager() {
               <div className="w-28">
                 <label className="mb-1 block text-xs font-medium text-slate-500">문항 수</label>
                 <input type="number" min={1} max={20} value={count}
-                  onChange={e => setCount(Number(e.target.value))}
+                  onChange={e => handleCountChange(e.target.value)}
                   className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none ring-slate-300 focus:ring-2" />
               </div>
             </div>
@@ -576,19 +676,31 @@ export default function QuizItemManager() {
             </div>
 
             {genError && (
-              <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
-                <AlertCircle size={16} /> {genError}
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+                <span className="flex items-center gap-2"><AlertCircle size={16} /> {genError}</span>
+                {needChalk && (
+                  <Link href="/shop"
+                    className="flex-shrink-0 rounded-lg bg-[#F2C94C] px-3 py-1.5 text-xs font-bold text-[#1B4332] hover:bg-[#EAB800] transition-colors">
+                    🖍️ 분필 충전하기
+                  </Link>
+                )}
               </div>
             )}
 
             {quizResult && quizResult.questions?.length > 0 && (
               <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2 text-sm font-semibold text-emerald-600">
                     <CheckCircle2 size={16} />
                     생성 완료 · {quizResult.questions.length}문항
                   </div>
-                  <span className="text-xs text-slate-400">분필 {quizResult.chalkSpent}개 사용됨</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">분필 {quizResult.chalkSpent}개 사용됨</span>
+                    <button onClick={() => printQuizExam(quizResult.title || "쌤툴 퀴즈", quizResult.questions)}
+                      className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
+                      <Printer size={13} /> 시험지 인쇄
+                    </button>
+                  </div>
                 </div>
 
                 {!shareInfo ? (
@@ -598,36 +710,38 @@ export default function QuizItemManager() {
                     {isPublishing ? "게시 중..." : "학생에게 공유하기 (링크 생성)"}
                   </button>
                 ) : (
-                  <div className="rounded-lg bg-indigo-50 px-3 py-2.5 text-sm">
-                    <p className="text-xs text-indigo-500">학생 접속 링크</p>
-                    <p className="font-mono font-medium text-indigo-800 break-all">{shareInfo.shareUrl}</p>
-                    <p className="mt-1 text-xs text-slate-400">코드: {shareInfo.shareCode}</p>
+                  <div className="rounded-lg bg-indigo-50 px-3 py-2.5">
+                    <div className="flex items-start gap-3">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(shareInfo.shareUrl)}`}
+                        alt="QR 코드" width={90} height={90}
+                        className="rounded-lg border border-indigo-200 bg-white p-1 flex-shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-indigo-500">학생 접속 링크</p>
+                        <p className="font-mono font-medium text-indigo-800 break-all text-sm">{shareInfo.shareUrl}</p>
+                        <p className="mt-1 text-xs text-slate-400">코드: {shareInfo.shareCode}</p>
+                        <p className="mt-1 text-[11px] text-indigo-400 flex items-center gap-1">
+                          <QrCode size={12} /> 교실 화면에 QR을 띄우면 학생들이 바로 접속할 수 있어요
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
 
+                {/* 우리반 배포 */}
+                <DeployToWooriban quizId={quizResult.quizId} getIdToken={getIdToken} />
+
                 {quizResult.questions.map((q, idx) => (
-                  <div key={idx} className="rounded-lg bg-slate-50 p-3">
-                    <div className="mb-1 flex items-center gap-2">
-                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
-                        {idx + 1}
-                      </span>
-                      <span className="text-xs text-slate-400">{q.type}</span>
-                    </div>
-                    <p className="text-sm font-medium text-slate-800">{q.question}</p>
-                    {Array.isArray(q.choices) && q.choices.length > 0 && (
-                      <ul className="mt-1.5 flex flex-wrap gap-2">
-                        {q.choices.map((c, ci) => (
-                          <li key={ci} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
-                            {c}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="mt-1.5 text-xs text-slate-500">
-                      정답: <span className="font-medium text-slate-700">{q.answer}</span>
-                    </p>
-                    {q.explanation && <p className="mt-0.5 text-xs text-slate-400">{q.explanation}</p>}
-                  </div>
+                  <QuestionCard key={idx} q={q} idx={idx}
+                    quizId={quizResult.quizId}
+                    getIdToken={getIdToken}
+                    canDelete={quizResult.questions.length > 1}
+                    onDeleted={(updated) => setQuizResult(r => ({ ...r, questions: updated }))}
+                    onRegenerated={(updated, spent) => setQuizResult(r => ({
+                      ...r, questions: updated, chalkSpent: (r.chalkSpent || 0) + spent,
+                    }))}
+                    onChalkError={() => setNeedChalk(true)}
+                  />
                 ))}
               </div>
             )}
@@ -635,5 +749,541 @@ export default function QuizItemManager() {
         )}
       </div>
     </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 내 퀴즈 목록 + 결과 대시보드
+// ══════════════════════════════════════════════════════════════════
+function MyQuizzes({ getIdToken }) {
+  const [quizzes,  setQuizzes]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState("");
+  const [busyId,   setBusyId]   = useState(null);
+  const [openId,   setOpenId]   = useState(null);   // 결과 펼친 퀴즈
+  const [results,  setResults]  = useState({});      // quizId → 결과 데이터
+  const [copied,   setCopied]   = useState("");
+
+  const authFetch = async (url, options = {}) => {
+    const idToken = await getIdToken();
+    return fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), Authorization: `Bearer ${idToken}` },
+    });
+  };
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res  = await authFetch("/api/quiz/list");
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "목록을 불러오지 못했어요."); return; }
+      setQuizzes(data.quizzes || []);
+    } catch {
+      setError("네트워크 오류가 발생했어요.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 게시 / 게시중단
+  const togglePublish = async (quiz) => {
+    setBusyId(quiz.quizId);
+    try {
+      const res = await authFetch(`/api/quiz/${quiz.quizId}/publish`, {
+        method: quiz.isPublished ? "DELETE" : "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "처리에 실패했어요.");
+        return;
+      }
+      await load();
+    } catch {
+      setError("네트워크 오류가 발생했어요.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // 결과 보기 (토글)
+  const toggleResults = async (quizId) => {
+    if (openId === quizId) { setOpenId(null); return; }
+    setOpenId(quizId);
+    if (results[quizId]) return;  // 캐시
+    try {
+      const res  = await authFetch(`/api/quiz/${quizId}/results`);
+      const data = await res.json();
+      if (res.ok) setResults(prev => ({ ...prev, [quizId]: data }));
+      else setError(data.error || "결과를 불러오지 못했어요.");
+    } catch {
+      setError("네트워크 오류가 발생했어요.");
+    }
+  };
+
+  const copyLink = (url, quizId) => {
+    navigator.clipboard.writeText(url);
+    setCopied(quizId);
+    setTimeout(() => setCopied(""), 1500);
+  };
+
+  const DIFF_LABEL = { beginner: "초급", intermediate: "중급", advanced: "고급" };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-slate-400 text-sm gap-2">
+        <Loader2 size={16} className="animate-spin" /> 불러오는 중...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-500">
+          생성한 퀴즈 <span className="font-semibold text-slate-800">{quizzes.length}개</span>
+          <span className="ml-2 text-xs text-slate-400">(재게시는 분필이 들지 않아요)</span>
+        </p>
+        <button onClick={load}
+          className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600">
+          <RefreshCw size={13} /> 새로고침
+        </button>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+          <AlertCircle size={16} /> {error}
+        </div>
+      )}
+
+      {quizzes.length === 0 && !error && (
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+          아직 만든 퀴즈가 없어요.
+          <br />퀴즈 생성 탭에서 첫 퀴즈를 만들어보세요!
+        </div>
+      )}
+
+      {quizzes.map(q => {
+        const isOpen = openId === q.quizId;
+        const r      = results[q.quizId];
+        return (
+          <div key={q.quizId} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            {/* 헤더 행 */}
+            <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+              <div className="flex-1 min-w-[180px]">
+                <p className="text-sm font-semibold text-slate-800">{q.title || "제목 없음"}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {DIFF_LABEL[q.difficulty] || q.difficulty} · {q.questionCount}문항
+                  {q.createdAt && ` · ${new Date(q.createdAt).toLocaleDateString("ko-KR")}`}
+                  {" · 응시 "}<span className="font-semibold text-slate-600">{q.attemptCount}명</span>
+                </p>
+              </div>
+
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                q.isPublished ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"
+              }`}>
+                {q.isPublished ? "게시 중" : "미게시"}
+              </span>
+
+              <div className="flex items-center gap-1">
+                <button onClick={() => toggleResults(q.quizId)}
+                  className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                    isOpen
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}>
+                  <BarChart3 size={13} /> 결과
+                </button>
+                <button onClick={() => togglePublish(q)} disabled={busyId === q.quizId}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+                  {busyId === q.quizId
+                    ? <Loader2 size={13} className="animate-spin" />
+                    : q.isPublished ? <Link2Off size={13} /> : <Link2 size={13} />}
+                  {q.isPublished ? "게시 중단" : "게시"}
+                </button>
+                <button onClick={() => printQuizExam(q.title, r?.questions || [])}
+                  disabled={!results[q.quizId]}
+                  title={results[q.quizId] ? "시험지 인쇄" : "결과 먼저 열어주세요"}
+                  className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-30">
+                  <Printer size={13} />
+                </button>
+              </div>
+            </div>
+
+            {/* 공유 링크 + QR */}
+            {q.isPublished && q.shareUrl && (
+              <div className="flex items-center gap-2 border-t border-slate-100 bg-indigo-50/50 px-4 py-2">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=${encodeURIComponent(q.shareUrl)}`}
+                  alt="QR" width={36} height={36} className="rounded border border-indigo-200 bg-white p-0.5 flex-shrink-0" />
+                <span className="font-mono text-xs text-indigo-700 truncate flex-1">{q.shareUrl}</span>
+                <span className="text-[11px] text-slate-400">코드: <b>{q.shareCode}</b></span>
+                <button onClick={() => copyLink(q.shareUrl, q.quizId)}
+                  className="flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50">
+                  <Copy size={11} /> {copied === q.quizId ? "복사됨!" : "복사"}
+                </button>
+              </div>
+            )}
+
+            {/* 결과 패널 */}
+            {isOpen && (
+              <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-3 space-y-4">
+                {!r ? (
+                  <div className="flex items-center gap-2 text-slate-400 text-xs py-3">
+                    <Loader2 size={13} className="animate-spin" /> 결과 불러오는 중...
+                  </div>
+                ) : r.attemptCount === 0 ? (
+                  <p className="text-xs text-slate-400 py-3">아직 응시한 학생이 없어요.</p>
+                ) : (
+                  <>
+                    {/* 요약 */}
+                    <div className="flex gap-4 text-xs">
+                      <span className="text-slate-500">응시 <b className="text-slate-800">{r.attemptCount}명</b></span>
+                      <span className="text-slate-500">평균 <b className="text-slate-800">{r.averageScore}점</b></span>
+                    </div>
+
+                    {/* 문항별 정답률 */}
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 mb-2">문항별 정답률</p>
+                      <div className="space-y-1.5">
+                        {r.questionStats.map(qs => (
+                          <div key={qs.index} className="flex items-center gap-2">
+                            <span className="w-6 text-center text-[11px] font-bold text-slate-400 flex-shrink-0">
+                              {qs.index + 1}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-slate-600 truncate" title={qs.question}>{qs.question}</p>
+                              <div className="mt-0.5 h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    (qs.correctRate ?? 0) >= 70 ? "bg-emerald-400"
+                                    : (qs.correctRate ?? 0) >= 40 ? "bg-amber-400"
+                                    : "bg-rose-400"
+                                  }`}
+                                  style={{ width: `${qs.correctRate ?? 0}%` }} />
+                              </div>
+                            </div>
+                            <span className={`w-12 text-right text-[11px] font-bold flex-shrink-0 ${
+                              (qs.correctRate ?? 0) >= 70 ? "text-emerald-600"
+                              : (qs.correctRate ?? 0) >= 40 ? "text-amber-600"
+                              : "text-rose-500"
+                            }`}>
+                              {qs.correctRate}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-[10px] text-slate-400">
+                        정답률이 낮은 문항(빨간색)의 문법 항목을 수업에서 다시 다뤄보세요.
+                      </p>
+                    </div>
+
+                    {/* 학생별 점수 */}
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 mb-2">학생별 점수</p>
+                      <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-slate-50">
+                            <tr className="text-slate-400">
+                              <th className="px-3 py-1.5 text-left font-semibold">이름</th>
+                              <th className="px-3 py-1.5 text-center font-semibold">점수</th>
+                              <th className="px-3 py-1.5 text-center font-semibold">정답</th>
+                              <th className="px-3 py-1.5 text-right font-semibold">제출 시각</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {r.attempts.map(a => (
+                              <tr key={a.id}>
+                                <td className="px-3 py-1.5 font-medium text-slate-700">{a.studentName}</td>
+                                <td className={`px-3 py-1.5 text-center font-bold ${
+                                  a.score >= 70 ? "text-emerald-600" : a.score >= 40 ? "text-amber-600" : "text-rose-500"
+                                }`}>{a.score}점</td>
+                                <td className="px-3 py-1.5 text-center text-slate-500">{a.correctCount}/{a.total}</td>
+                                <td className="px-3 py-1.5 text-right text-slate-400">
+                                  {a.submittedAt ? new Date(a.submittedAt).toLocaleString("ko-KR", {
+                                    month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+                                  }) : "-"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 문항 카드 (삭제 / 재생성 지원)
+// ══════════════════════════════════════════════════════════════════
+function QuestionCard({ q, idx, quizId, getIdToken, canDelete, onDeleted, onRegenerated, onChalkError }) {
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState("");
+
+  const authFetch = async (url, options = {}) => {
+    const idToken = await getIdToken();
+    return fetch(url, {
+      ...options,
+      headers: { "Content-Type": "application/json", ...(options.headers || {}), Authorization: `Bearer ${idToken}` },
+    });
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`${idx + 1}번 문항을 삭제할까요?`)) return;
+    setBusy(true); setErr("");
+    try {
+      const res  = await authFetch(`/api/quiz/${quizId}/questions`, {
+        method: "PATCH", body: JSON.stringify({ index: idx }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error || "삭제 실패"); return; }
+      onDeleted(data.questions);
+    } catch {
+      setErr("네트워크 오류");
+    } finally { setBusy(false); }
+  };
+
+  const handleRegenerate = async () => {
+    setBusy(true); setErr("");
+    try {
+      const res  = await authFetch(`/api/quiz/${quizId}/questions`, {
+        method: "POST", body: JSON.stringify({ index: idx }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 402) onChalkError();
+        setErr(data.error || "재생성 실패");
+        return;
+      }
+      onRegenerated(data.questions, data.chalkSpent || 1);
+    } catch {
+      setErr("네트워크 오류");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-lg bg-slate-50 p-3">
+      <div className="mb-1 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+            {idx + 1}
+          </span>
+          <span className="text-xs text-slate-400">{q.type}</span>
+        </div>
+        {quizId && (
+          <div className="flex items-center gap-1">
+            <button onClick={handleRegenerate} disabled={busy} title="이 문항만 재생성 (분필 1개)"
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-indigo-500 hover:bg-indigo-50 disabled:opacity-40">
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} 재생성
+            </button>
+            {canDelete && (
+              <button onClick={handleDelete} disabled={busy} title="문항 삭제"
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-rose-400 hover:bg-rose-50 disabled:opacity-40">
+                <Trash size={12} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <p className="text-sm font-medium text-slate-800">{q.question}</p>
+      {Array.isArray(q.choices) && q.choices.length > 0 && (
+        <ul className="mt-1.5 flex flex-wrap gap-2">
+          {q.choices.map((c, ci) => (
+            <li key={ci} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+              {c}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-1.5 text-xs text-slate-500">
+        정답: <span className="font-medium text-slate-700">{q.answer}</span>
+      </p>
+      {q.explanation && <p className="mt-0.5 text-xs text-slate-400">{q.explanation}</p>}
+      {err && <p className="mt-1 text-[11px] text-rose-500">{err}</p>}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 우리반 배포
+// ══════════════════════════════════════════════════════════════════
+function DeployToWooriban({ quizId, getIdToken }) {
+  const [open,     setOpen]     = useState(false);
+  const [schools,  setSchools]  = useState([]);
+  const [schoolId, setSchoolId] = useState("");
+  const [semester, setSemester] = useState("");
+  const [classId,  setClassId]  = useState("");
+  const [busy,     setBusy]     = useState(false);
+  const [result,   setResult]   = useState(null);
+  const [err,      setErr]      = useState("");
+
+  const authFetch = async (url, options = {}) => {
+    const idToken = await getIdToken();
+    return fetch(url, {
+      ...options,
+      headers: { "Content-Type": "application/json", ...(options.headers || {}), Authorization: `Bearer ${idToken}` },
+    });
+  };
+
+  const loadSchools = async () => {
+    try {
+      const res  = await authFetch("/api/wooriban/schools");
+      const data = await res.json();
+      if (res.ok) {
+        setSchools(data.schools || []);
+        if (data.schools?.[0]) {
+          setSchoolId(data.schools[0].id);
+          const sems = data.schools[0].semesters || [];
+          setSemester(sems[0] || "");
+          setClassId((data.schools[0].classes?.[sems[0]] || [])[0] || "");
+        }
+      }
+    } catch { /* 무시 — 배포 버튼에서 오류 처리 */ }
+  };
+
+  const handleOpen = () => {
+    setOpen(true);
+    setResult(null); setErr("");
+    if (schools.length === 0) loadSchools();
+  };
+
+  const currentSchool = schools.find(s => s.id === schoolId);
+  const semList  = currentSchool?.semesters || [];
+  const classList = currentSchool?.classes?.[semester] || [];
+
+  const handleDeploy = async () => {
+    if (!schoolId || !semester || !classId) { setErr("학교/학기/반을 모두 선택해주세요."); return; }
+    setBusy(true); setErr("");
+    try {
+      const res  = await authFetch(`/api/quiz/${quizId}/deploy-wooriban`, {
+        method: "POST", body: JSON.stringify({ schoolId, semester, classId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error || "배포에 실패했어요."); return; }
+      setResult(data);
+    } catch {
+      setErr("네트워크 오류가 발생했어요.");
+    } finally { setBusy(false); }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={handleOpen}
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100">
+        <Send size={14} /> 우리반에 배포하기
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-emerald-700">우리반 반 선택</p>
+        <button onClick={() => setOpen(false)} className="text-emerald-400 hover:text-emerald-600 text-xs">닫기</button>
+      </div>
+
+      {schools.length === 0 && !err ? (
+        <p className="text-xs text-emerald-500 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> 우리반 정보 불러오는 중...</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <select value={schoolId} onChange={e => {
+            setSchoolId(e.target.value);
+            const s = schools.find(x => x.id === e.target.value);
+            const sems = s?.semesters || [];
+            setSemester(sems[0] || "");
+            setClassId((s?.classes?.[sems[0]] || [])[0] || "");
+          }} className="rounded-lg border border-emerald-200 px-2 py-1.5 text-xs">
+            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <select value={semester} onChange={e => {
+            setSemester(e.target.value);
+            setClassId((currentSchool?.classes?.[e.target.value] || [])[0] || "");
+          }} className="rounded-lg border border-emerald-200 px-2 py-1.5 text-xs">
+            {semList.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select value={classId} onChange={e => setClassId(e.target.value)}
+            className="rounded-lg border border-emerald-200 px-2 py-1.5 text-xs">
+            {classList.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      )}
+
+      {err && <p className="text-[11px] text-rose-500">{err}</p>}
+
+      {result ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-700 bg-white rounded-lg px-3 py-2">
+          <CheckCircle2 size={14} /> 우리반에 배포됐어요! ({result.questionCount}문항)
+        </div>
+      ) : (
+        <button onClick={handleDeploy} disabled={busy || schools.length === 0}
+          className="w-full rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-40 flex items-center justify-center gap-1.5">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+          {busy ? "배포 중..." : "이 반에 배포"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 출석 체크 (무료 분필 획득)
+// ══════════════════════════════════════════════════════════════════
+export function DailyChalkBanner({ getIdToken }) {
+  const [status, setStatus] = useState("idle"); // idle | claimed | already | error
+  const [msg,    setMsg]    = useState("");
+  const [busy,   setBusy]   = useState(false);
+
+  const authFetch = async (url, options = {}) => {
+    const idToken = await getIdToken();
+    return fetch(url, {
+      ...options,
+      headers: { "Content-Type": "application/json", ...(options.headers || {}), Authorization: `Bearer ${idToken}` },
+    });
+  };
+
+  useEffect(() => {
+    authFetch("/api/chalk/daily", { method: "GET" })
+      .then(res => res.json())
+      .then(data => { if (data.claimedToday) setStatus("already"); })
+      .catch(() => {});
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleClaim = async () => {
+    setBusy(true);
+    try {
+      const res  = await authFetch("/api/chalk/daily", { method: "POST" });
+      const data = await res.json();
+      if (data.granted) { setStatus("claimed"); setMsg(data.message); }
+      else { setStatus("already"); setMsg(data.message || "오늘은 이미 받았어요."); }
+    } catch {
+      setStatus("error"); setMsg("오류가 발생했어요.");
+    } finally { setBusy(false); }
+  };
+
+  if (status === "already" || status === "claimed") {
+    return (
+      <div className="mb-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
+        <Gift size={14} className="text-slate-400" />
+        {status === "claimed" ? msg : "오늘 출석 체크를 완료했어요. 내일 또 만나요!"}
+      </div>
+    );
+  }
+
+  return (
+    <button onClick={handleClaim} disabled={busy}
+      className="mb-4 flex w-full items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700 hover:bg-amber-100 transition disabled:opacity-50">
+      <span className="flex items-center gap-2"><Gift size={16} /> 오늘의 출석 체크하고 분필 받기</span>
+      {busy ? <Loader2 size={14} className="animate-spin" /> : <span className="text-xs font-bold">+1 🖍️</span>}
+    </button>
   );
 }

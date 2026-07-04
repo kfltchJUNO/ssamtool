@@ -7,6 +7,17 @@ import { deductCredits, refundCredits, InsufficientCreditsError } from "@/lib/cr
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
+// 모델 폴백 — 과부하/지원종료 시 자동 전환
+const MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gemini-3.1-flash-lite",
+  "gemini-3-flash",
+  "gemini-2.5-flash-lite",
+];
+let modelIdx = 0;
+const getModel = () => MODELS[modelIdx % MODELS.length];
+
 function calcChalkCost(count: number) {
   return Math.max(3, Math.ceil(count / 2));
 }
@@ -28,7 +39,7 @@ function buildQuizPrompt({
 
 조건:
 1. 문항 유형은 빈칸 채우기(fill-in-blank), 객관식(multiple-choice), 오류 교정(error-correction)을 섞어서 출제
-2. 학습자가 초급자임을 감안해 문장 길이는 짧고 어휘는 쉽게
+2. 난이도에 맞게 문장 길이와 어휘 수준을 조절 (초급: 짧고 쉬운 어휘 / 중급: 일상 표현 / 고급: 추상적 주제 가능)
 3. 각 문항마다 오답 시 참고할 수 있는 간단한 문법 해설 포함
 4. 반드시 아래 JSON 형식으로만 응답하고, 다른 텍스트나 마크다운 코드블록 표시는 포함하지 마세요
 
@@ -55,6 +66,40 @@ interface ParsedQuiz {
   questions: QuizQuestion[];
 }
 
+// 폴백 + 지수 백오프 재시도
+async function generateWithRetry(prompt: string, maxRetries = 5): Promise<string> {
+  for (let i = 0; i < maxRetries; i++) {
+    const currentModel = getModel();
+    try {
+      console.log(`[Quiz Gemini] 시도 ${i + 1}/${maxRetries} - 모델: ${currentModel}`);
+      const model = genAI.getGenerativeModel({
+        model: currentModel,
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 8192 },
+      });
+      const result = await model.generateContent(prompt);
+      const text   = result.response.text();
+      const trimmed = text.replace(/```json|```/g, "").trim();
+      if (!trimmed.endsWith("}") && !trimmed.endsWith("]")) {
+        console.log(`[Quiz Gemini] 응답 잘림 - 모델: ${currentModel}`);
+        modelIdx++;
+        if (i === maxRetries - 1) throw new Error("응답 잘림");
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+        continue;
+      }
+      console.log(`[Quiz Gemini] 성공 - 모델: ${currentModel}`);
+      return trimmed;
+    } catch (e: unknown) {
+      const status = (e as { status?: number }).status;
+      const isRetryable = status === 503 || status === 429 || status === 500 || status === 404;
+      console.log(`[Quiz Gemini] 실패 - 모델: ${currentModel}, 상태: ${status}`);
+      modelIdx++;
+      if (!isRetryable || i === maxRetries - 1) throw e;
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+    }
+  }
+  throw new Error("모든 모델 호출 실패");
+}
+
 export async function POST(req: NextRequest) {
   let uid: string;
   try {
@@ -62,6 +107,9 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
   }
+
+  let chalkCost = 0;
+  let charged   = false;   // ★ 차감 여부 추적 — 어떤 실패에서도 환불 보장
 
   try {
     const body = await req.json();
@@ -73,43 +121,49 @@ export async function POST(req: NextRequest) {
       count:         number;
     };
 
-    if (!grammarPoints?.length || !count) {
+    if (!grammarPoints?.length || !count || isNaN(count)) {
       return NextResponse.json({ error: "필수 항목이 누락되었습니다." }, { status: 400 });
     }
     if (count < 1 || count > 20) {
       return NextResponse.json({ error: "문항 수는 1~20개 사이여야 합니다." }, { status: 400 });
     }
 
-    const chalkCost = calcChalkCost(count);
+    chalkCost = calcChalkCost(count);
 
     // 1) 분필 선차감
     try {
       await deductCredits(uid, chalkCost, "퀴즈 생성");
+      charged = true;
     } catch (e) {
       if (e instanceof InsufficientCreditsError) {
-        return NextResponse.json({ error: "분필이 부족합니다. 충전 후 다시 시도해 주세요." }, { status: 402 });
+        return NextResponse.json(
+          { error: "분필이 부족합니다. 충전 후 다시 시도해 주세요.", code: "INSUFFICIENT_CHALK" },
+          { status: 402 }
+        );
       }
       throw e;
     }
 
-    // 2) Gemini 호출
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-pro",
-      generationConfig: { responseMimeType: "application/json" },
-    });
+    // 2) Gemini 호출 (폴백 포함)
     const prompt = buildQuizPrompt({ grammarPoints, difficulty, count });
-    const result = await model.generateContent(prompt);
-    const raw    = result.response.text();
+    const raw    = await generateWithRetry(prompt);
 
     let parsed: ParsedQuiz;
     try {
       parsed = JSON.parse(raw) as ParsedQuiz;
     } catch {
       await refundCredits(uid, chalkCost, "퀴즈 생성 실패(파싱 오류)");
+      charged = false;
       return NextResponse.json({ error: "퀴즈 생성 응답을 해석하지 못했습니다. 다시 시도해 주세요." }, { status: 502 });
     }
 
-    // 3) Firestore 저장
+    if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+      await refundCredits(uid, chalkCost, "퀴즈 생성 실패(빈 결과)");
+      charged = false;
+      return NextResponse.json({ error: "문항이 생성되지 않았습니다. 다시 시도해 주세요." }, { status: 502 });
+    }
+
+    // 3) Firestore 저장 (쌤툴 전용 컬렉션)
     const quizRef = adminDb.collection("ssamtoolQuizzes").doc();
     await quizRef.set({
       title:        `${curriculum || "커스텀"} ${unit || ""} 퀴즈`.trim(),
@@ -132,6 +186,10 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
     console.error("[quiz/generate] error:", msg);
-    return NextResponse.json({ error: "서버 오류가 발생했습니다." }, { status: 500 });
+    // ★ 차감된 상태로 실패하면 무조건 환불 (기존엔 파싱 실패만 환불 — 분필 증발 버그)
+    if (charged) {
+      await refundCredits(uid, chalkCost, "퀴즈 생성 실패(서버 오류)").catch(() => {});
+    }
+    return NextResponse.json({ error: "서버 오류가 발생했습니다. 분필은 환불됐어요." }, { status: 500 });
   }
 }
