@@ -4,6 +4,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { adminDb, adminAuth } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { deductCredits, refundCredits, InsufficientCreditsError } from "@/lib/credits";
+import { isChalkEnabled } from "@/lib/monetizationServer";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -130,18 +131,23 @@ export async function POST(req: NextRequest) {
 
     chalkCost = calcChalkCost(count);
 
-    // 1) 분필 선차감
-    try {
-      await deductCredits(uid, chalkCost, "퀴즈 생성");
-      charged = true;
-    } catch (e) {
-      if (e instanceof InsufficientCreditsError) {
-        return NextResponse.json(
-          { error: "분필이 부족합니다. 충전 후 다시 시도해 주세요.", code: "INSUFFICIENT_CHALK" },
-          { status: 402 }
-        );
+    // 1) 분필 선차감 — 관리자가 settings/monetization에서 끄면 무료로 동작
+    const chalkEnabled = await isChalkEnabled();
+    if (chalkEnabled) {
+      try {
+        await deductCredits(uid, chalkCost, "퀴즈 생성");
+        charged = true;
+      } catch (e) {
+        if (e instanceof InsufficientCreditsError) {
+          return NextResponse.json(
+            { error: "분필이 부족합니다. 충전 후 다시 시도해 주세요.", code: "INSUFFICIENT_CHALK" },
+            { status: 402 }
+          );
+        }
+        throw e;
       }
-      throw e;
+    } else {
+      chalkCost = 0;   // 무료 기간엔 응답에도 0으로 표시
     }
 
     // 2) Gemini 호출 (폴백 포함)

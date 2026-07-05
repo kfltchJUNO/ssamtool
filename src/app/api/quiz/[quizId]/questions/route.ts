@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { adminDb, adminAuth } from "@/lib/firebase-admin";
 import { deductCredits, refundCredits, InsufficientCreditsError } from "@/lib/credits";
+import { isChalkEnabled } from "@/lib/monetizationServer";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const REGENERATE_COST = 1;
@@ -84,9 +85,12 @@ export async function POST(
   }
 
   let charged = false;
+  const chalkEnabled = await isChalkEnabled();
   try {
-    await deductCredits(uid, REGENERATE_COST, "퀴즈 문항 재생성");
-    charged = true;
+    if (chalkEnabled) {
+      await deductCredits(uid, REGENERATE_COST, "퀴즈 문항 재생성");
+      charged = true;
+    }
 
     const oldQ = questions[index];
     const prompt = `당신은 한국어 교육 전문가입니다. 아래 문항과 같은 유형·난이도로, 내용만 다른 새 문항 1개를 생성하세요.
@@ -110,7 +114,7 @@ export async function POST(
     updated[index] = newQ;
     await ref.update({ questions: updated });
 
-    return NextResponse.json({ questions: updated, chalkSpent: REGENERATE_COST });
+    return NextResponse.json({ questions: updated, chalkSpent: charged ? REGENERATE_COST : 0 });
   } catch (e) {
     console.error("[quiz/questions regenerate] error:", e);
     if (charged) await refundCredits(uid, REGENERATE_COST, "문항 재생성 실패").catch(() => {});
