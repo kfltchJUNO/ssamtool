@@ -802,6 +802,10 @@ export default function QuizItemManager() {
                       className="flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
                       <Printer size={13} /> 시험지 인쇄
                     </button>
+                    <button onClick={() => setMode("myQuizzes")}
+                      className="flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">
+                      <History size={13} /> 내 퀴즈 목록
+                    </button>
                   </div>
                 </div>
 
