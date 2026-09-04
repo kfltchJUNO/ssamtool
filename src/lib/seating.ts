@@ -279,8 +279,9 @@ export async function saveLayout(
   uid: string,
   layout: Omit<SeatingLayout, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
+  const cleanData = JSON.parse(JSON.stringify(layout));
   const ref = await addDoc(layoutCol(uid), {
-    ...layout,
+    ...cleanData,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -288,7 +289,8 @@ export async function saveLayout(
 }
 
 export async function updateLayout(uid: string, lid: string, layout: Partial<SeatingLayout>) {
-  await updateDoc(layoutDoc(uid, lid), { ...layout, updatedAt: serverTimestamp() });
+  const cleanData = JSON.parse(JSON.stringify(layout));
+  await updateDoc(layoutDoc(uid, lid), { ...cleanData, updatedAt: serverTimestamp() });
 }
 
 export async function deleteLayout(uid: string, lid: string) {
@@ -309,8 +311,9 @@ export async function saveSeatingChart(
   uid: string,
   chart: Omit<SeatingChart, "id" | "createdAt">
 ): Promise<string> {
+  const cleanData = JSON.parse(JSON.stringify(chart));
   const ref = await addDoc(chartCol(uid), {
-    ...chart,
+    ...cleanData,
     createdAt: serverTimestamp(),
   });
   return ref.id;

@@ -157,14 +157,29 @@ export default function SeatingChart({
   };
 
   const handleSaveLayout = async () => {
-    if (!uid || !layoutName.trim()) return;
+    if (!uid) {
+      alert("로그인이 필요한 기능입니다. 먼저 로그인해 주세요.");
+      return;
+    }
+    const name = layoutName.trim();
+    if (!name) {
+      alert("레이아웃 이름을 입력해 주세요. (예: 302호 ㄷ자 구조)");
+      return;
+    }
     setBusy(true);
     try {
+      const cleanElements = elements.map(el => ({
+        id: el.id,
+        type: el.type,
+        x: el.x,
+        y: el.y,
+      }));
+
       const data = {
-        name: layoutName.trim(),
+        name,
         cols,
         rows,
-        elements,
+        elements: cleanElements,
       };
       if (currentLayoutId) {
         await updateLayout(uid, currentLayoutId, data);
@@ -174,6 +189,10 @@ export default function SeatingChart({
       }
       await loadLayouts();
       setShowSavePanel(false);
+      alert(`'${name}' 교실 레이아웃 구조가 성공적으로 저장되었습니다!`);
+    } catch (err: unknown) {
+      console.error("[handleSaveLayout Error]", err);
+      alert("레이아웃 저장 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setBusy(false);
     }
@@ -181,7 +200,10 @@ export default function SeatingChart({
 
   // 레이아웃 복제 기능
   const handleCloneLayout = async (l: SeatingLayout) => {
-    if (!uid) return;
+    if (!uid) {
+      alert("로그인이 필요합니다.");
+      return;
+    }
     setBusy(true);
     try {
       const cloneData = {
@@ -195,6 +217,10 @@ export default function SeatingChart({
       const updatedList = await getLayouts(uid);
       const cloned = updatedList.find(item => item.id === newId);
       if (cloned) loadLayout(cloned);
+      alert("레이아웃이 성공적으로 복제되었습니다!");
+    } catch (err: unknown) {
+      console.error("[handleCloneLayout Error]", err);
+      alert("복제 중 오류가 발생했습니다.");
     } finally {
       setBusy(false);
     }
@@ -212,18 +238,57 @@ export default function SeatingChart({
 
   // 배정 결과 히스토리 저장
   const handleSaveChart = async () => {
-    if (!uid || !currentLayoutId || assignments.size === 0) return;
-    const chartAssignments = Array.from(assignments.entries()).map(([deskId, studentId]) => ({
-      deskId,
-      studentId,
-    }));
-    await saveSeatingChart(uid, {
-      layoutId: currentLayoutId,
-      title: `${new Date().toLocaleDateString("ko-KR")} 배정`,
-      assignments: chartAssignments,
-    });
-    loadChartsForLayout(currentLayoutId);
-    alert("현재 자리 배정 결과가 저장되었습니다.");
+    if (!uid) {
+      alert("로그인이 필요한 기능입니다. 먼저 로그인해 주세요.");
+      return;
+    }
+    if (assignments.size === 0) {
+      alert("배정된 학생이 없습니다. 먼저 '학생만 다시 섞기'를 눌러 자리를 배정한 후 저장해 주세요.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      let targetLayoutId = currentLayoutId;
+
+      // 만약 저장된 레이아웃이 없다면, 현재 구조를 자동 저장하여 layoutId 생성
+      if (!targetLayoutId) {
+        const name = layoutName.trim() || "교실 구조";
+        const cleanElements = elements.map(el => ({
+          id: el.id,
+          type: el.type,
+          x: el.x,
+          y: el.y,
+        }));
+        targetLayoutId = await saveLayout(uid, {
+          name,
+          cols,
+          rows,
+          elements: cleanElements,
+        });
+        setCurrentLayoutId(targetLayoutId);
+        await loadLayouts();
+      }
+
+      const chartAssignments = Array.from(assignments.entries()).map(([deskId, studentId]) => ({
+        deskId,
+        studentId,
+      }));
+
+      await saveSeatingChart(uid, {
+        layoutId: targetLayoutId,
+        title: `${layoutName || "교실"} - ${new Date().toLocaleDateString("ko-KR")} 배정`,
+        assignments: chartAssignments,
+      });
+
+      if (targetLayoutId) loadChartsForLayout(targetLayoutId);
+      alert("현재 자리 배정 결과가 저장되었습니다!");
+    } catch (err: unknown) {
+      console.error("[handleSaveChart Error]", err);
+      alert("자리 배정 결과 저장 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(false);
+    }
   };
 
   // ── 3. 그리드 및 드래그 앤 드롭 ────────────────────────────────
