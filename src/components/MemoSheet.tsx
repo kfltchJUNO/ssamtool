@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { getMemo, saveMemo } from "@/lib/seating";
+import { getMemo, saveMemo, getLayouts, getSeatingCharts, type SeatingLayout, type SeatingChart as SeatingChartDoc } from "@/lib/seating";
+import { executePrint } from "@/lib/print";
 
 interface Props {
   preloadedStudents?: string[];
@@ -13,24 +14,15 @@ interface Props {
 }
 
 type ViewMode = "list" | "grid";
+type PrintFormat = "list" | "seating" | "both";
 
-// ── 동적 항목 구조 ──────────────────────────────────────────────
-// 기존 고정 4항목(발음/문법/수업태도/메모) → 선생님이 자유롭게 추가/삭제
 interface FlexMemo {
   studentName: string;
-  values:      Record<string, string>;   // { "발음": "...", "과제": "..." }
+  values: Record<string, string>;
 }
 
 const DEFAULT_FIELDS = ["발음", "문법", "수업 태도", "메모"];
 
-const DEFAULT_PLACEHOLDERS: Record<string, string> = {
-  "발음":     "발음 특이사항",
-  "문법":     "자주 틀리는 문법",
-  "수업 태도": "참여도, 특이사항",
-  "메모":     "기타 메모",
-};
-
-// 구버전 저장 데이터 호환: 고정 키 → 라벨
 const LEGACY_KEY_MAP: Record<string, string> = {
   pronunciation: "발음",
   grammar:       "문법",
@@ -44,56 +36,64 @@ function emptyMemo(name: string): FlexMemo {
   return { studentName: name, values: {} };
 }
 
-export default function StudentMemo({ preloadedStudents = [], preloadedLabel = "", preloadedGroupId = "", onOpenClassPanel, isLoggedIn }: Props) {
+export default function StudentMemo({
+  preloadedStudents = [],
+  preloadedLabel = "",
+  preloadedGroupId = "",
+  onOpenClassPanel,
+  isLoggedIn,
+}: Props) {
   const { user } = useAuth();
   const uid = user?.uid ?? "";
 
-  const [students,  setStudents]  = useState<string[]>([]);
-  const [memos,     setMemos]     = useState<FlexMemo[]>([]);
-  const [fields,    setFields]    = useState<string[]>(DEFAULT_FIELDS);
-  const [viewMode,  setViewMode]  = useState<ViewMode>("list");
-  const [saving,    setSaving]    = useState(false);
-  const [saved,     setSaved]     = useState(false);
+  const [students, setStudents] = useState<string[]>([]);
+  const [memos, setMemos] = useState<FlexMemo[]>([]);
+  const [fields, setFields] = useState<string[]>(DEFAULT_FIELDS);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [activeStudent, setActiveStudent] = useState<string | null>(null);
-  const [newField,  setNewField]  = useState("");
+  const [newField, setNewField] = useState("");
   const [showFieldSettings, setShowFieldSettings] = useState(false);
 
-  // ── 저장된 메모 불러오기 (구버전 데이터 자동 변환) ───────────
+  // Task 4 인쇄 서식 관련 상태
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printFormat, setPrintFormat] = useState<PrintFormat>("list");
+  const [savedLayouts, setSavedLayouts] = useState<SeatingLayout[]>([]);
+  const [savedCharts, setSavedCharts] = useState<SeatingChartDoc[]>([]);
+  const [selectedChartId, setSelectedChartId] = useState<string>("");
+
   const loadMemos = useCallback(async (groupId: string, names: string[]) => {
     const sheet = await getMemo(uid, groupId);
     if (!sheet) return;
 
     const raw = sheet as unknown as {
       fields?: string[];
-      memos:   Record<string, string>[];
+      memos: Record<string, string>[];
     };
 
-    // 항목: 저장돼 있으면 사용, 없으면(구버전) 기본 4개
     const loadedFields = Array.isArray(raw.fields) && raw.fields.length >= 0
       ? raw.fields
       : DEFAULT_FIELDS;
     setFields(loadedFields.length > 0 || Array.isArray(raw.fields) ? loadedFields : DEFAULT_FIELDS);
 
     setMemos(names.map(name => {
-      const saved = raw.memos?.find(m => m.studentName === name);
-      if (!saved) return emptyMemo(name);
+      const savedMemo = raw.memos?.find(m => m.studentName === name);
+      if (!savedMemo) return emptyMemo(name);
 
-      // 신버전: values 객체 그대로
-      const savedValues = (saved as unknown as FlexMemo).values;
+      const savedValues = (savedMemo as unknown as FlexMemo).values;
       if (savedValues && typeof savedValues === "object") {
         return { studentName: name, values: { ...savedValues } };
       }
-      // 구버전: 고정 키 → 라벨 변환
       const values: Record<string, string> = {};
       Object.entries(LEGACY_KEY_MAP).forEach(([oldKey, label]) => {
-        const v = saved[oldKey];
+        const v = savedMemo[oldKey];
         if (typeof v === "string" && v) values[label] = v;
       });
       return { studentName: name, values };
     }));
   }, [uid]);
 
-  // 반 불러오기
   useEffect(() => {
     if (preloadedStudents.length > 0) {
       setStudents(preloadedStudents);
@@ -102,6 +102,18 @@ export default function StudentMemo({ preloadedStudents = [], preloadedLabel = "
       if (uid && preloadedGroupId) loadMemos(preloadedGroupId, preloadedStudents);
     }
   }, [preloadedStudents, preloadedGroupId, uid, loadMemos]);
+
+  // 저장된 자리표 및 레이아웃 불러오기 (Task 4)
+  const openPrintModal = async () => {
+    setShowPrintModal(true);
+    if (uid) {
+      const lList = await getLayouts(uid);
+      const cList = await getSeatingCharts(uid);
+      setSavedLayouts(lList);
+      setSavedCharts(cList);
+      if (cList.length > 0) setSelectedChartId(cList[0].id);
+    }
+  };
 
   const updateMemo = (name: string, field: string, value: string) => {
     setMemos(prev => prev.map(m =>
@@ -112,7 +124,6 @@ export default function StudentMemo({ preloadedStudents = [], preloadedLabel = "
     setSaved(false);
   };
 
-  // ── 항목 관리 ─────────────────────────────────────────────────
   const addField = () => {
     const label = newField.trim();
     if (!label) return;
@@ -125,244 +136,290 @@ export default function StudentMemo({ preloadedStudents = [], preloadedLabel = "
 
   const removeField = (label: string) => {
     const hasData = memos.some(m => (m.values[label] ?? "").trim());
-    if (hasData && !confirm(`"${label}" 항목에 작성된 메모가 있어요.\n항목을 삭제하면 화면과 인쇄에서 보이지 않아요. (데이터는 저장 시 함께 정리됩니다)\n삭제할까요?`)) return;
+    if (hasData && !confirm(`"${label}" 항목에 작성된 메모가 있어요. 삭제할까요?`)) return;
     setFields(prev => prev.filter(f => f !== label));
     setSaved(false);
   };
 
-  const restoreDefaults = () => {
-    setFields(prev => {
-      const merged = [...prev];
-      DEFAULT_FIELDS.forEach(f => { if (!merged.includes(f)) merged.push(f); });
-      return merged.slice(0, MAX_FIELDS);
-    });
-    setSaved(false);
-  };
-
-  // ── 저장 ──────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!uid || !preloadedGroupId) return;
     setSaving(true);
     try {
-      // 삭제된 항목의 값은 정리하고 저장
       const cleanMemos = memos.map(m => ({
         studentName: m.studentName,
         values: Object.fromEntries(
-          Object.entries(m.values).filter(([k]) => fields.includes(k))
+          Object.entries(m.values).filter(([k, v]) => fields.includes(k) && v.trim())
         ),
       }));
       await saveMemo(uid, preloadedGroupId, {
-        groupId:   preloadedGroupId,
+        groupId: preloadedGroupId,
         groupName: preloadedLabel,
         fields,
-        memos:     cleanMemos,
-      } as unknown as Parameters<typeof saveMemo>[2]);
+        memos: cleanMemos as unknown as FlexMemo[],
+      });
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // ── 인쇄 (동적 열 / 항목 없으면 빈칸 한 열) ──────────────────
-  const handlePrint = (mode: ViewMode) => {
-    const printFields = fields.length > 0 ? fields : [""];   // 항목 없으면 빈 열 하나
-    const landscape   = mode === "grid" || printFields.length > 4;
+  // ── Task 4 인쇄 실행 ──────────────────────────────────────────────
+  const handleExecutePrint = () => {
+    let bodyHTML = "";
 
-    const headerCells = printFields
-      .map(f => `<th>${f || "&nbsp;"}</th>`)
-      .join("");
+    // 1. 목록형 인쇄 HTML
+    const buildListHTML = () => {
+      return `
+        <div style="font-size:16px; font-weight:bold; color:#1B4332; margin-bottom:12px;">
+          📝 학생 메모지 목록형 ${preloadedLabel ? " — " + preloadedLabel : ""}
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          ${memos.map(m => `
+            <div class="avoid-break" style="border:1.5px solid #CBD5E1; border-radius:8px; padding:10px; background:#fff;">
+              <div style="font-[#0F172A]; font-weight:bold; font-size:14px; margin-bottom:6px; border-b:1px solid #E2E8F0; pb:4px;">
+                👤 ${m.studentName}
+              </div>
+              ${fields.map(f => `
+                <div style="font-size:11px; margin-bottom:4px;">
+                  <span style="color:#64748B; font-weight:600;">• ${f}:</span>
+                  <span style="color:#1E293B;">${m.values[f] || "__________________"}</span>
+                </div>
+              `).join("")}
+            </div>
+          `).join("")}
+        </div>
+      `;
+    };
 
-    const rows = memos.map(m => {
-      const cells = printFields.map(f => {
-        const v = f ? (m.values[f] ?? "") : "";
-        return `<td style="padding:8px 10px;border:1px solid #ddd;font-size:12px;color:#333;min-width:${f ? 80 : 300}px;">${v}</td>`;
-      }).join("");
-      return `<tr>
-        <td style="padding:8px 10px;border:1px solid #ddd;font-weight:700;font-size:14px;white-space:nowrap;">${m.studentName}</td>
-        ${cells}
-      </tr>`;
-    }).join("");
+    // 2. 자리표형 인쇄 HTML
+    const buildSeatingHTML = () => {
+      const targetChart = savedCharts.find(c => c.id === selectedChartId);
+      const targetLayout = savedLayouts.find(l => l.id === targetChart?.layoutId);
 
-    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
-      <style>@page{size:A4 ${landscape ? "landscape" : "portrait"};margin:12mm}
-      body{font-family:'Noto Sans KR',sans-serif;margin:0}
-      h2{font-size:16px;color:#111;margin:0 0 12px}
-      table{width:100%;border-collapse:collapse;font-size:13px}
-      th{padding:8px 10px;background:#F5F5F5;border:1px solid #DDD;font-size:12px;color:#555;text-align:left}</style>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap">
-    </head><body>
-      <h2>📝 학생 메모 — ${preloadedLabel || "반 목록"}</h2>
-      <table><thead><tr>
-        <th>이름</th>${headerCells}
-      </tr></thead><tbody>${rows}</tbody></table>
-      <script>document.fonts.ready.then(()=>setTimeout(()=>{window.print();window.close();},300))</script>
-    </body></html>`;
+      if (!targetChart || !targetLayout) {
+        return `<div style="color:red;">저장된 자리표를 선택해주세요.</div>`;
+      }
 
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return;
-    doc.open(); doc.write(html); doc.close();
-    iframe.contentWindow?.addEventListener("afterprint", () => document.body.removeChild(iframe));
+      const cols = targetLayout.cols;
+      const rows = targetLayout.rows;
+      const cW = 120;
+      const cH = 85;
+      const gap = 8;
+      const totalW = cols * (cW + gap);
+      const totalH = (rows + 1) * (cH + gap);
+
+      let cellsHTML = "";
+      for (let r = 0; r <= rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const el = targetLayout.elements.find(e => e.x === c && e.y === r);
+          if (!el) continue;
+
+          const px = c * (cW + gap);
+          const py = r * (cH + gap);
+
+          const assignment = targetChart.assignments.find(a => a.deskId === el.id);
+          const studentName = assignment ? assignment.studentId : null; // or match student name
+          const memoObj = memos.find(m => m.studentName === studentName || m.studentName === assignment?.studentId);
+
+          cellsHTML += `
+            <div style="
+              position:absolute; left:${px}px; top:${py}px;
+              width:${cW}px; height:${cH}px;
+              background:#ffffff; border:1.5px solid #334155; border-radius:6px;
+              box-sizing:border-box; padding:6px; font-size:10px;
+            ">
+              <div style="font-weight:bold; font-size:12px; color:#0F172A; margin-bottom:4px; border-b:1px solid #E2E8F0;">
+                ${studentName || (el.type === "desk" ? "빈 자리" : el.type)}
+              </div>
+              ${el.type === "desk" && studentName ? `
+                ${fields.slice(0, 3).map(f => `
+                  <div style="font-size:9px; color:#475569;">
+                    [ ] ${f}: ${memoObj?.values[f] || "______"}
+                  </div>
+                `).join("")}
+              ` : ""}
+            </div>
+          `;
+        }
+      }
+
+      return `
+        <div style="font-size:16px; font-weight:bold; color:#1B4332; margin-bottom:12px;">
+          📋 자리표형 메모지 (${targetLayout.name})
+        </div>
+        <div style="position:relative; width:${totalW}px; height:${totalH}px;">
+          ${cellsHTML}
+        </div>
+      `;
+    };
+
+    if (printFormat === "list") {
+      bodyHTML = buildListHTML();
+    } else if (printFormat === "seating") {
+      bodyHTML = buildSeatingHTML();
+    } else {
+      bodyHTML = buildSeatingHTML() + '<div class="page-break"></div>' + buildListHTML();
+    }
+
+    executePrint(bodyHTML, { paperSize: "A4", orientation: printFormat === "list" ? "portrait" : "landscape" });
   };
-
-  const activeMemo = memos.find(m => m.studentName === activeStudent);
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-[#E8E0D0] p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h2 className="font-bold text-[#1B4332] text-lg">학생 메모</h2>
+      <div className="bg-white rounded-xl border border-[#E8E0D0] p-5 shadow-sm space-y-4">
+        
+        {/* 헤더 */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold text-[#1B4332] text-lg">학생 관찰 메모장</h2>
+            {saved && <span className="text-xs text-emerald-600 font-semibold">✓ 저장됨</span>}
+          </div>
+
           <div className="flex items-center gap-2 flex-wrap">
             {isLoggedIn && onOpenClassPanel && (
-              <button onClick={onOpenClassPanel} className="flex items-center gap-1 text-xs text-[#1B4332] font-semibold bg-[#F0FFF4] border border-[#9AE6B4] px-2.5 py-1.5 rounded-lg hover:bg-[#D4EDDA] transition-colors">👥 반 불러오기</button>
-            )}
-            {uid && preloadedGroupId && (
-              <button onClick={handleSave} disabled={saving}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${saved ? "bg-[#9AE6B4] text-[#1B4332]" : "bg-[#1B4332] text-white hover:bg-[#2D6A4F]"} disabled:opacity-50`}>
-                {saving ? "저장 중..." : saved ? "✓ 저장됨" : "💾 저장"}
+              <button onClick={onOpenClassPanel} className="text-xs text-[#1B4332] font-semibold bg-[#F0FFF4] border border-[#9AE6B4] px-2.5 py-1.5 rounded-lg hover:bg-[#D4EDDA]">
+                👥 반 불러오기
               </button>
             )}
-            <button onClick={() => handlePrint(viewMode)} className="px-3 py-1.5 bg-[#F2C94C] text-[#1B4332] text-xs font-bold rounded-lg hover:bg-[#EAB800]">🖨️ 인쇄</button>
+            <button onClick={() => setShowFieldSettings(v => !v)} className="text-xs px-2.5 py-1.5 border border-[#E8E0D0] rounded-lg text-[#4A4A4A] hover:border-[#1B4332]">
+              ⚙️ 메모 항목 설정
+            </button>
+            <button onClick={openPrintModal} className="text-xs px-3 py-1.5 bg-[#F2C94C] text-[#1B4332] font-bold rounded-lg hover:bg-[#EAB800]">
+              🖨️ 메모지 인쇄
+            </button>
+            {isLoggedIn && preloadedGroupId && (
+              <button onClick={handleSave} disabled={saving} className="text-xs px-3 py-1.5 bg-[#1B4332] text-white font-bold rounded-lg hover:bg-[#2D6A4F] disabled:opacity-40">
+                {saving ? "저장 중..." : "💾 저장"}
+              </button>
+            )}
           </div>
         </div>
 
-        {!preloadedLabel && (
-          <div className="py-10 text-center text-[#9A9A9A]">
-            <p className="text-3xl mb-2">📝</p>
-            <p className="text-sm">반을 불러오면 학생별 메모를 작성할 수 있어요</p>
-            {isLoggedIn && onOpenClassPanel && (
-              <button onClick={onOpenClassPanel} className="mt-3 px-4 py-2 bg-[#1B4332] text-white text-sm font-semibold rounded-lg hover:bg-[#2D6A4F] transition-colors">👥 반 불러오기</button>
-            )}
+        {/* 메모 항목 설정 패널 */}
+        {showFieldSettings && (
+          <div className="p-4 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0] space-y-2 text-xs">
+            <h4 className="font-bold text-[#0F172A]">⚙️ 메모 항목 관리를 위한 추가/삭제 (최대 8개)</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {fields.map(f => (
+                <span key={f} className="px-2.5 py-1 bg-white border border-[#CBD5E1] rounded-lg text-[#334155] font-semibold flex items-center gap-1">
+                  {f}
+                  <button onClick={() => removeField(f)} className="text-red-500 font-bold ml-1">×</button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <input value={newField} onChange={e => setNewField(e.target.value)} placeholder="새 메모 항목 이름 (예: 과제)" className="border px-2 py-1 rounded text-xs" />
+              <button onClick={addField} className="px-3 py-1 bg-[#1B4332] text-white font-bold rounded">추가</button>
+            </div>
           </div>
         )}
 
-        {preloadedLabel && students.length > 0 && (
-          <>
-            <div className="text-xs text-[#2D6A4F] bg-[#F0FFF4] px-3 py-1.5 rounded-lg border border-[#9AE6B4] mb-4">
-              ✅ {preloadedLabel} · {students.length}명
-              {!preloadedGroupId && <span className="text-[#9A9A9A] ml-2">(저장하려면 반 패널에서 불러오세요)</span>}
-            </div>
+        {/* 보기 모드 전환 */}
+        <div className="flex items-center justify-between border-b pb-3">
+          <div className="flex rounded-lg border border-[#E8E0D0] overflow-hidden">
+            <button onClick={() => setViewMode("list")} className={`px-3 py-1.5 text-xs font-semibold ${viewMode === "list" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}>
+              📋 목록형 보기
+            </button>
+            <button onClick={() => setViewMode("grid")} className={`px-3 py-1.5 text-xs font-semibold ${viewMode === "grid" ? "bg-[#1B4332] text-white" : "text-[#4A4A4A]"}`}>
+              🗂️ 카드형 보기
+            </button>
+          </div>
+          <span className="text-xs text-[#64748B]">총 {students.length}명 학생 메모</span>
+        </div>
 
-            {/* 뷰 모드 + 항목 설정 토글 */}
-            <div className="flex items-center gap-2 mb-4 flex-wrap">
-              {([["list","📋 목록형"],["grid","⊞ 카드형"]] as [ViewMode,string][]).map(([m,l]) => (
-                <button key={m} onClick={() => setViewMode(m)}
-                  className={`px-3 py-1.5 rounded-lg text-sm border-2 font-semibold transition-all ${viewMode===m ? "border-[#1B4332] bg-[#F0FFF4] text-[#1B4332]" : "border-[#E8E0D0] text-[#4A4A4A] hover:border-[#1B4332]"}`}>
-                  {l}
-                </button>
-              ))}
-              <button onClick={() => setShowFieldSettings(v => !v)}
-                className={`px-3 py-1.5 rounded-lg text-sm border-2 font-semibold transition-all ${showFieldSettings ? "border-[#F2C94C] bg-[#FFF8E1] text-[#92630A]" : "border-[#E8E0D0] text-[#4A4A4A] hover:border-[#F2C94C]"}`}>
-                ⚙️ 항목 설정 ({fields.length})
-              </button>
-            </div>
-
-            {/* 항목 설정 패널 */}
-            {showFieldSettings && (
-              <div className="mb-4 p-4 bg-[#FFFDF5] border border-[#F2C94C] rounded-xl space-y-3">
-                <p className="text-xs text-[#92630A]">
-                  메모 항목을 자유롭게 구성하세요. <b>항목을 모두 지우면 인쇄 시 학생 이름 옆이 빈칸으로 나와요</b> (손글씨 메모용).
-                </p>
-                {/* 현재 항목 칩 */}
-                <div className="flex flex-wrap gap-1.5">
-                  {fields.map(f => (
-                    <span key={f} className="flex items-center gap-1 bg-white border border-[#E8E0D0] rounded-full pl-3 pr-1.5 py-1 text-xs font-semibold text-[#2D2D2D]">
-                      {f}
-                      <button onClick={() => removeField(f)}
-                        className="w-4 h-4 flex items-center justify-center rounded-full text-[#9A9A9A] hover:bg-[#FDE8E8] hover:text-[#C53030] text-[10px] leading-none">
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                  {fields.length === 0 && (
-                    <span className="text-xs text-[#9A9A9A] py-1">항목 없음 — 인쇄 시 빈칸 한 열이 나와요</span>
-                  )}
-                </div>
-                {/* 항목 추가 */}
-                <div className="flex gap-2">
-                  <input value={newField} onChange={e => setNewField(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && addField()}
-                    placeholder="새 항목 (예: 과제, 출석, 발표)"
-                    maxLength={10}
-                    className="flex-1 border border-[#E8E0D0] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#1B4332]" />
-                  <button onClick={addField} disabled={!newField.trim() || fields.length >= MAX_FIELDS}
-                    className="px-3 py-1.5 bg-[#1B4332] text-white text-xs font-bold rounded-lg hover:bg-[#2D6A4F] disabled:opacity-40">
-                    + 추가
-                  </button>
-                  <button onClick={restoreDefaults}
-                    className="px-3 py-1.5 border border-[#E8E0D0] text-[#4A4A4A] text-xs font-semibold rounded-lg hover:bg-[#F5F5F5]">
-                    기본 항목 복원
-                  </button>
-                </div>
-                {fields.length >= MAX_FIELDS && (
-                  <p className="text-[11px] text-[#C53030]">항목은 최대 {MAX_FIELDS}개까지 만들 수 있어요.</p>
-                )}
-              </div>
-            )}
-
-            {/* 항목이 없을 때 안내 */}
-            {fields.length === 0 && (
-              <div className="py-8 text-center text-[#9A9A9A] border border-dashed border-[#E8E0D0] rounded-xl">
-                <p className="text-sm">항목이 없어요. 인쇄하면 학생 이름 옆이 <b>빈칸</b>으로 나와요.</p>
-                <p className="text-xs mt-1">화면에서 메모를 입력하려면 ⚙️ 항목 설정에서 항목을 추가하세요.</p>
-              </div>
-            )}
-
-            {/* 목록형: 학생 탭 + 상세 편집 */}
-            {viewMode === "list" && fields.length > 0 && (
-              <div className="flex gap-4">
-                <div className="flex flex-col gap-1 flex-shrink-0" style={{minWidth:100}}>
-                  {students.map(s => {
-                    const m = memos.find(m => m.studentName === s);
-                    const hasNote = m && Object.values(m.values).some(v => (v ?? "").trim());
-                    return (
-                      <button key={s} onClick={() => setActiveStudent(s)}
-                        className={`px-3 py-2 rounded-lg text-sm font-semibold text-left transition-all flex items-center gap-1.5 ${activeStudent===s ? "bg-[#1B4332] text-white" : "text-[#2D2D2D] hover:bg-[#F0FFF4] border border-[#E8E0D0]"}`}>
-                        {hasNote && <span className="w-1.5 h-1.5 rounded-full bg-[#F2C94C] flex-shrink-0" />}
-                        {s}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {activeMemo && (
-                  <div className="flex-1 space-y-3">
-                    <p className="font-bold text-[#1B4332]">{activeMemo.studentName}</p>
-                    {fields.map(f => (
-                      <div key={f}>
-                        <label className="text-xs font-semibold text-[#4A4A4A] block mb-1">{f}</label>
-                        <textarea value={activeMemo.values[f] ?? ""} onChange={e => updateMemo(activeMemo.studentName, f, e.target.value)}
-                          placeholder={DEFAULT_PLACEHOLDERS[f] ?? `${f} 메모`} rows={2}
-                          className="w-full border border-[#E8E0D0] rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-[#1B4332]" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 카드형 */}
-            {viewMode === "grid" && fields.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {memos.map(m => (
-                  <div key={m.studentName} className="border border-[#E8E0D0] rounded-xl p-4 space-y-2.5">
-                    <p className="font-bold text-[#1B4332] border-b border-[#E8E0D0] pb-2">{m.studentName}</p>
-                    {fields.map(f => (
-                      <div key={f} className="flex gap-2 items-start">
-                        <span className="text-[11px] font-semibold text-[#9A9A9A] w-14 flex-shrink-0 pt-1">{f}</span>
-                        <textarea value={m.values[f] ?? ""} onChange={e => updateMemo(m.studentName, f, e.target.value)}
-                          placeholder={DEFAULT_PLACEHOLDERS[f] ?? ""} rows={1}
-                          className="flex-1 border border-[#E8E0D0] rounded-lg px-2 py-1 text-xs resize-none focus:outline-none focus:border-[#1B4332]" />
-                      </div>
-                    ))}
+        {/* 메모 작성 그리드/목록 */}
+        <div className="space-y-4">
+          {memos.map(m => (
+            <div key={m.studentName} className="p-4 border border-[#E2E8F0] rounded-xl bg-white space-y-2 shadow-sm">
+              <h3 className="font-bold text-[#1B4332] text-sm flex items-center gap-2">
+                <span>👤</span> {m.studentName}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                {fields.map(f => (
+                  <div key={f} className="space-y-1">
+                    <label className="text-[11px] font-semibold text-[#64748B]">{f}</label>
+                    <input
+                      value={m.values[f] || ""}
+                      onChange={e => updateMemo(m.studentName, f, e.target.value)}
+                      placeholder={`${f} 기록...`}
+                      className="w-full border border-[#E2E8F0] rounded-lg p-2 text-xs focus:outline-none focus:border-[#1B4332]"
+                    />
                   </div>
                 ))}
               </div>
-            )}
-          </>
-        )}
+            </div>
+          ))}
+        </div>
+
       </div>
+
+      {/* 🖨️ Task 4 통합 인쇄 설정 모달 */}
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-bold text-lg text-[#1B4332]">🖨️ 학생 메모지 인쇄 형식 선택</h3>
+              <button onClick={() => setShowPrintModal(false)} className="text-gray-400 font-bold text-xl">×</button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-gray-700 block mb-1">인쇄 형식:</label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 border rounded-lg hover:bg-gray-50">
+                    <input type="radio" name="pFormat" checked={printFormat === "list"} onChange={() => setPrintFormat("list")} />
+                    <div>
+                      <div className="font-bold text-gray-800">📋 목록형 메모지</div>
+                      <div className="text-[11px] text-gray-500">학생 명단 순서대로 메모 칸을 인쇄합니다.</div>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer p-2 border rounded-lg hover:bg-gray-50">
+                    <input type="radio" name="pFormat" checked={printFormat === "seating"} onChange={() => setPrintFormat("seating")} />
+                    <div>
+                      <div className="font-bold text-gray-800">🪑 자리표형 메모지</div>
+                      <div className="text-[11px] text-gray-500">교실 책상 위치 그대로 각 칸에 관찰 체크 및 메모 공간 표시</div>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer p-2 border rounded-lg hover:bg-gray-50">
+                    <input type="radio" name="pFormat" checked={printFormat === "both"} onChange={() => setPrintFormat("both")} />
+                    <div>
+                      <div className="font-bold text-gray-800">📄 자리표 + 목록형 통합</div>
+                      <div className="text-[11px] text-gray-500">1페이지 자리표 / 2페이지 이후 목록형 메모지 인쇄</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {(printFormat === "seating" || printFormat === "both") && (
+                <div className="p-3 bg-[#F8FAFC] border rounded-lg space-y-2">
+                  <label className="font-bold text-gray-700 block">불러올 저장 자리표 선택:</label>
+                  {savedCharts.length > 0 ? (
+                    <select value={selectedChartId} onChange={e => setSelectedChartId(e.target.value)} className="w-full border p-1.5 rounded text-xs">
+                      {savedCharts.map(c => (
+                        <option key={c.id} value={c.id}>{c.title} ({c.id})</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="text-red-500 text-[11px]">
+                      저장된 자리표가 없습니다. 먼저 자리표 탭에서 배정 후 저장해주세요.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setShowPrintModal(false)} className="flex-1 py-2 border rounded-xl font-bold text-gray-600">
+                취소
+              </button>
+              <button onClick={() => { setShowPrintModal(false); handleExecutePrint(); }} className="flex-1 py-2 bg-[#F2C94C] text-[#1B4332] rounded-xl font-bold hover:bg-[#EAB800]">
+                🖨️ 인쇄하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

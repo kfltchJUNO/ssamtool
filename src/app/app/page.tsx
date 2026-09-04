@@ -16,20 +16,26 @@ import FeedbackButton from "@/components/FeedbackButton";
 import QuizItemManager from "@/components/quiz-item-manager";
 import InAppBrowserBanner from "@/components/InAppBrowserBanner";
 import { AdSense, CoupangBanner, CoupangSearchWidget, KakaoAdFitResponsive, AppPromoBar } from "@/components/ads/AdBanners";
+import ClassroomTools from "@/components/ClassroomTools";
+import WorksheetGenerator from "@/components/WorksheetGenerator";
+import TextAdapter from "@/components/TextAdapter";
 import { useAuth } from "@/context/AuthContext";
 import { signOut } from "@/lib/auth";
 
-type Tab = "nametag"|"timer"|"random"|"seating"|"group"|"speaking"|"memo"|"quiz";
+type Tab = "nametag"|"timer"|"random"|"seating"|"group"|"speaking"|"memo"|"quiz"|"tools"|"worksheet"|"textadapt";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "nametag",  label: "이름표",   icon: "🪪" },
-  { id: "timer",    label: "타이머",   icon: "⏱️" },
-  { id: "random",   label: "뽑기",     icon: "🎲" },
-  { id: "seating",  label: "자리표",   icon: "🪑" },
-  { id: "group",    label: "모둠",     icon: "👥" },
-  { id: "speaking", label: "시험순서", icon: "🎤" },
-  { id: "memo",     label: "메모",     icon: "📝" },
-  { id: "quiz",     label: "퀴즈",     icon: "🎯" },
+  { id: "nametag",   label: "이름표",       icon: "🪪" },
+  { id: "timer",     label: "타이머",       icon: "⏱️" },
+  { id: "random",    label: "뽑기",         icon: "🎲" },
+  { id: "seating",   label: "자리표",       icon: "🪑" },
+  { id: "group",     label: "모둠",         icon: "👥" },
+  { id: "speaking",  label: "시험순서",     icon: "🎤" },
+  { id: "memo",      label: "메모",         icon: "📝" },
+  { id: "quiz",      label: "AI 퀴즈",      icon: "🎯" },
+  { id: "tools",     label: "효과음/도장",  icon: "🔔" },
+  { id: "worksheet", label: "단어장/십자말", icon: "🧩" },
+  { id: "textadapt", label: "지문 변환",    icon: "📖" },
 ];
 
 export default function AppPage() {
@@ -198,9 +204,12 @@ export default function AppPage() {
             {activeTab === "random"   && <RandomPicker      {...sharedProps} />}
             {activeTab === "seating"  && <SeatingChart      {...sharedProps} />}
             {activeTab === "group"    && <GroupDivider      {...sharedProps} />}
-            {activeTab === "speaking" && <SpeakingOrder     {...sharedProps} />}
-            {activeTab === "memo"     && <StudentMemo       {...sharedProps} preloadedGroupId={loadedGroupId} />}
-            {activeTab === "quiz"     && <QuizItemManager />}
+            {activeTab === "speaking"  && <SpeakingOrder     {...sharedProps} />}
+            {activeTab === "memo"      && <StudentMemo       {...sharedProps} preloadedGroupId={loadedGroupId} />}
+            {activeTab === "quiz"      && <QuizItemManager />}
+            {activeTab === "tools"     && <ClassroomTools    preloadedStudents={loadedStudents} />}
+            {activeTab === "worksheet" && <WorksheetGenerator />}
+            {activeTab === "textadapt" && <TextAdapter />}
           </div>
 
           {/* 우측 사이드 (PC만) */}

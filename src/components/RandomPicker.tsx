@@ -14,27 +14,7 @@ function getColor(name: string): string {
   return COLORS[Math.abs(hash) % COLORS.length];
 }
 
-function Avatar({ name, size = 48 }: { name: string; size?: number }) {
-  const color = getColor(name);
-  const initial = name[0] || "?";
-  return (
-    <div
-      style={{
-        width: size, height: size,
-        background: color,
-        color: "white",
-        fontSize: size * 0.4,
-        fontWeight: 700,
-        borderRadius: "50%",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
-        userSelect: "none",
-      }}
-    >
-      {initial}
-    </div>
-  );
-}
+type PickerMode = "slot" | "ladder" | "cards";
 
 interface RandomPickerProps {
   preloadedStudents?: string[];
@@ -43,7 +23,12 @@ interface RandomPickerProps {
   isLoggedIn?: boolean;
 }
 
-export default function RandomPicker({ preloadedStudents = [], preloadedLabel = "", onOpenClassPanel, isLoggedIn }: RandomPickerProps) {
+export default function RandomPicker({
+  preloadedStudents = [],
+  preloadedLabel = "",
+  onOpenClassPanel,
+  isLoggedIn
+}: RandomPickerProps) {
   const [namesInput, setNamesInput] = useState("");
   const [nameList, setNameList] = useState<string[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
@@ -51,28 +36,19 @@ export default function RandomPicker({ preloadedStudents = [], preloadedLabel = 
   const [rolling, setRolling] = useState(false);
   const [excludePicked, setExcludePicked] = useState(true);
   const [pickCount, setPickCount] = useState(1);
+  const [mode, setMode] = useState<PickerMode>("slot");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // 카드 뒤집기 상태
+  const [cardFlipped, setCardFlipped] = useState<Record<number, boolean>>({});
+
   const rollRef = useRef<NodeJS.Timeout | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const pool = excludePicked
     ? nameList.filter((n) => !picked.includes(n))
     : nameList;
 
-  const applyNames = useCallback(() => {
-    const lines = namesInput
-      .split(/[\n,，、]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    setNameList(lines);
-    setPicked([]);
-    setCurrent("");
-  }, [namesInput]);
-
-  useEffect(() => {
-    // Load nothing on mount; user clicks "목록 적용" explicitly
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 외부에서 반 불러오기
   useEffect(() => {
     if (preloadedStudents.length > 0) {
       setNamesInput(preloadedStudents.join("\n"));
@@ -82,9 +58,27 @@ export default function RandomPicker({ preloadedStudents = [], preloadedLabel = 
     }
   }, [preloadedStudents]);
 
-  const pickRandom = useCallback(() => {
-    if (pool.length === 0) return;
-    if (rolling) return;
+  // ── 난수 결과 사전 결정 (Pre-determination) ────────────────────
+  const predeterminePick = useCallback((count: number) => {
+    const available = [...pool];
+    const finalPicked: string[] = [];
+    const actualCount = Math.min(count, available.length);
+
+    for (let i = 0; i < actualCount; i++) {
+      const idx = Math.floor(Math.random() * available.length);
+      finalPicked.push(available[idx]);
+      available.splice(idx, 1);
+    }
+    return finalPicked;
+  }, [pool]);
+
+  // ── 빠른 뽑기 (슬롯머신) ──────────────────────────────────────────
+  const pickRandomSlot = useCallback(() => {
+    if (pool.length === 0 || rolling) return;
+
+    // 1. 결과 먼저 결정
+    const finalPicked = predeterminePick(pickCount);
+    if (finalPicked.length === 0) return;
 
     setRolling(true);
     setCurrent("");
@@ -97,213 +91,185 @@ export default function RandomPicker({ preloadedStudents = [], preloadedLabel = 
       const rand = pool[Math.floor(Math.random() * pool.length)];
       setCurrent(rand);
 
-      const delay = ticks < maxTicks * 0.6
-        ? 60
-        : ticks < maxTicks * 0.85
-        ? 100
-        : ticks < maxTicks
-        ? 180
-        : 0;
+      const delay = ticks < maxTicks * 0.6 ? 60 : ticks < maxTicks * 0.85 ? 100 : 180;
 
       if (ticks < maxTicks) {
         rollRef.current = setTimeout(tick, delay);
       } else {
-        // Final pick
-        const finalPicked: string[] = [];
-        const available = [...pool];
-
-        const count = Math.min(pickCount, available.length);
-        for (let i = 0; i < count; i++) {
-          const idx = Math.floor(Math.random() * available.length);
-          finalPicked.push(available[idx]);
-          available.splice(idx, 1);
-        }
-
         setCurrent(finalPicked.join(", "));
-        setPicked((prev) => [...prev, ...finalPicked]);
+        setPicked(prev => [...prev, ...finalPicked]);
         setRolling(false);
       }
     };
 
     tick();
-  }, [pool, rolling, pickCount]);
+  }, [pool, rolling, pickCount, predeterminePick]);
+
+  // 애니메이션 스킵 (즉시 결과 표시)
+  const skipAnimation = () => {
+    if (rollRef.current) clearTimeout(rollRef.current);
+    const finalPicked = predeterminePick(pickCount);
+    if (finalPicked.length > 0) {
+      setCurrent(finalPicked.join(", "));
+      setPicked(prev => [...prev, ...finalPicked]);
+    }
+    setRolling(false);
+  };
 
   const reset = () => {
     setPicked([]);
     setCurrent("");
     setRolling(false);
+    setCardFlipped({});
     if (rollRef.current) clearTimeout(rollRef.current);
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
   };
 
   const EXAMPLE = "김유진\n이서준\n박민서\n최지우\n정하은\n강민준\n윤서연\n임채원\n한지호\n오수아";
 
   return (
-    <div className="space-y-5">
-      {/* Input */}
-      <div className="bg-white rounded-xl border border-[#E8E0D0] p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-[#1B4332] text-lg">랜덤 뽑기</h2>
-          <div className="flex items-center gap-3">
-            {isLoggedIn && onOpenClassPanel && (
-              <button onClick={onOpenClassPanel} className="flex items-center gap-1 text-xs text-[#1B4332] font-semibold bg-[#F0FFF4] border border-[#9AE6B4] px-2.5 py-1 rounded-lg hover:bg-[#D4EDDA] transition-colors">
-                👥 반 불러오기
+    <div className={`space-y-5 ${isFullscreen ? "bg-[#1B4332] text-white p-8 fixed inset-0 z-50 overflow-y-auto" : ""}`}>
+      
+      {/* 명단 입력 카드 */}
+      {!isFullscreen && (
+        <div className="bg-white rounded-xl border border-[#E8E0D0] p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-[#1B4332] text-lg">🎲 랜덤 학생 뽑기</h2>
+            <div className="flex items-center gap-3">
+              {isLoggedIn && onOpenClassPanel && (
+                <button onClick={onOpenClassPanel} className="text-xs text-[#1B4332] font-semibold bg-[#F0FFF4] border border-[#9AE6B4] px-2.5 py-1 rounded-lg">
+                  👥 반 불러오기
+                </button>
+              )}
+              <button onClick={() => { setNamesInput(EXAMPLE); setNameList(EXAMPLE.split("\n")); }} className="text-xs text-[#2D6A4F] underline">
+                예시 입력
               </button>
-            )}
-            <button onClick={() => { setNamesInput(EXAMPLE); }} className="text-xs text-[#2D6A4F] underline underline-offset-2 hover:text-[#1B4332]">
-              예시
-            </button>
+            </div>
           </div>
-        </div>
 
-        {preloadedLabel && (
-          <div className="text-xs text-[#2D6A4F] bg-[#F0FFF4] px-3 py-1.5 rounded-lg border border-[#9AE6B4] mb-3">
-            ✅ {preloadedLabel} · {preloadedStudents.length}명
-          </div>
-        )}
-
-        <div className="flex gap-3">
           <textarea
             value={namesInput}
-            onChange={(e) => setNamesInput(e.target.value)}
-            placeholder={"이름 목록 (줄바꿈 또는 쉼표로 구분)\n\n예) 김유진\n이서준\n박민서"}
-            className="flex-1 h-32 border border-[#E8E0D0] rounded-lg p-3 text-sm resize-none focus:outline-none focus:border-[#1B4332] focus:ring-1 focus:ring-[#1B4332]"
+            onChange={e => {
+              setNamesInput(e.target.value);
+              setNameList(e.target.value.split(/[\n,]/).map(s => s.trim()).filter(Boolean));
+            }}
+            placeholder="학생 이름을 줄바꿈 또는 쉼표로 입력하세요..."
+            className="w-full h-24 border border-[#E8E0D0] rounded-lg p-3 text-sm focus:outline-none focus:border-[#1B4332]"
           />
-          <div className="flex flex-col gap-2 justify-end">
-            <button
-              onClick={applyNames}
-              className="px-4 py-2 bg-[#1B4332] text-white text-sm font-semibold rounded-lg hover:bg-[#2D6A4F] transition-colors"
-            >
-              목록 적용
-            </button>
-            <p className="text-xs text-[#9A9A9A] text-center">
-              {nameList.length}명
-            </p>
-          </div>
-        </div>
 
-        {/* Options */}
-        <div className="mt-4 flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={excludePicked}
-              onChange={(e) => setExcludePicked(e.target.checked)}
-              className="accent-[#1B4332]"
-            />
-            <span className="text-sm text-[#4A4A4A]">이미 뽑힌 학생 제외</span>
-          </label>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-[#4A4A4A]">뽑을 수:</span>
-            <input
-              type="number"
-              min={1}
-              max={Math.max(1, pool.length)}
-              value={pickCount}
-              onChange={(e) => setPickCount(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-16 border border-[#E8E0D0] rounded px-2 py-1 text-sm text-center focus:outline-none focus:border-[#1B4332]"
-            />
-            <span className="text-sm text-[#4A4A4A]">명</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Picker display */}
-      <div className="bg-white rounded-xl border border-[#E8E0D0] shadow-sm overflow-hidden">
-        {/* Big result */}
-        <div
-          className="chalk-header flex flex-col items-center justify-center py-10 px-4 cursor-pointer select-none"
-          onClick={!rolling && pool.length > 0 ? pickRandom : undefined}
-          style={{ minHeight: 200 }}
-        >
-          {nameList.length === 0 ? (
-            <p className="text-[#A8D5B7] text-sm">위에서 이름 목록을 입력하세요</p>
-          ) : pool.length === 0 && !current ? (
-            <div className="text-center">
-              <div className="text-4xl mb-2">🎉</div>
-              <p className="chalk-text font-bold text-lg">모두 뽑혔습니다!</p>
-              <button
-                onClick={(e) => { e.stopPropagation(); reset(); }}
-                className="mt-3 px-5 py-2 bg-[#F2C94C] text-[#1B4332] text-sm font-bold rounded-lg hover:bg-[#EAB800]"
-              >
-                다시 시작
-              </button>
-            </div>
-          ) : current ? (
-            <div className={`text-center ${rolling ? "rolling" : "pop-in"}`}>
-              <div
-                style={{ fontSize: current.includes(",") ? "2rem" : "3.5rem" }}
-                className="chalk-text font-black"
-              >
-                {current}
+          <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t text-xs">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" checked={excludePicked} onChange={e => setExcludePicked(e.target.checked)} />
+                <span>뽑힌 학생 자동 제외</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <span>추첨 인원:</span>
+                <select value={pickCount} onChange={e => setPickCount(Number(e.target.value))} className="border rounded p-1">
+                  {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}명</option>)}
+                </select>
               </div>
-              {!rolling && (
-                <p className="text-[#A8D5B7] text-sm mt-2">클릭해서 다시 뽑기</p>
-              )}
             </div>
-          ) : (
-            <div className="text-center">
-              <div className="text-5xl mb-3 animate-bounce">🎲</div>
-              <p className="chalk-text font-bold text-lg">클릭해서 뽑기!</p>
-              <p className="text-[#A8D5B7] text-sm mt-1">{pool.length}명 중에서</p>
-            </div>
-          )}
-        </div>
 
-        {/* Picked list */}
-        {picked.length > 0 && (
-          <div className="p-4 border-t border-[#E8E0D0]">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-[#4A4A4A]">뽑힌 학생 ({picked.length}명)</p>
-              <button
-                onClick={reset}
-                className="text-xs text-[#9A9A9A] underline underline-offset-2 hover:text-[#C53030]"
-              >
+            <div className="flex gap-2">
+              <button onClick={reset} className="px-3 py-1.5 border border-[#E8E0D0] text-[#4A4A4A] rounded-lg hover:border-[#1B4332]">
                 초기화
               </button>
+              <button onClick={toggleFullscreen} className="px-3 py-1.5 bg-[#475569] text-white font-bold rounded-lg">
+                📺 TV/프로젝터 전체화면
+              </button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {picked.map((name, i) => (
-                <div
-                  key={`${name}-${i}`}
-                  className="flex items-center gap-1.5 bg-[#F5F0E8] rounded-full px-3 py-1"
-                >
-                  <Avatar name={name} size={22} />
-                  <span className="text-sm font-medium text-[#1B4332]">{name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Remaining list */}
-      {nameList.length > 0 && (
-        <div className="bg-white rounded-xl border border-[#E8E0D0] p-4 shadow-sm">
-          <p className="text-xs font-semibold text-[#4A4A4A] mb-3">
-            남은 학생 ({pool.length}/{nameList.length}명)
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {nameList.map((name, i) => {
-              const isPicked = picked.includes(name);
-              return (
-                <div
-                  key={`list-${name}-${i}`}
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 transition-all ${
-                    isPicked
-                      ? "bg-[#E8E0D0] opacity-40 line-through"
-                      : "bg-[#F0FFF4] border border-[#9AE6B4]"
-                  }`}
-                >
-                  {!isPicked && <Avatar name={name} size={22} />}
-                  <span className={`text-sm ${isPicked ? "text-[#9A9A9A]" : "text-[#22543D] font-medium"}`}>
-                    {name}
-                  </span>
-                </div>
-              );
-            })}
           </div>
         </div>
       )}
+
+      {/* 연출 모드 선택 탭 (Task 7) */}
+      <div className="flex gap-2 justify-center">
+        {(["slot", "cards"] as PickerMode[]).map(m => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              mode === m ? "bg-[#1B4332] text-white shadow-md" : "bg-white text-[#475569] border border-[#CBD5E1]"
+            }`}
+          >
+            {m === "slot" && "🎰 빠른 슬롯머신"}
+            {m === "cards" && "🎴 흥미진진 카드 뒤집기"}
+          </button>
+        ))}
+      </div>
+
+      {/* 1. 슬롯머신 모드 연출 */}
+      {mode === "slot" && (
+        <div className="bg-white rounded-2xl border-2 border-[#1B4332] p-8 text-center space-y-6 shadow-md">
+          <div className="h-28 flex items-center justify-center bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+            <span className="text-4xl font-black text-[#1B4332] tracking-wider animate-pulse">
+              {current || (pool.length === 0 ? "명단을 먼저 입력해주세요" : "준비 완료!")}
+            </span>
+          </div>
+
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={pickRandomSlot}
+              disabled={pool.length === 0 || rolling}
+              className="px-8 py-4 bg-[#1B4332] text-white text-lg font-black rounded-2xl hover:bg-[#2D6A4F] disabled:opacity-40 shadow-lg transition-transform active:scale-95"
+            >
+              {rolling ? "추첨 진행 중..." : "🎲 뽑기 시작!"}
+            </button>
+            {rolling && (
+              <button onClick={skipAnimation} className="px-4 py-4 bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl">
+                ⏩ 스킵
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 2. 카드 뒤집기 연출 모드 */}
+      {mode === "cards" && (
+        <div className="bg-white rounded-2xl border-2 border-[#1B4332] p-6 space-y-4 text-center shadow-md">
+          <p className="text-xs font-bold text-gray-500">카드를 직접 선택하여 클릭하면 당첨 학생이 공개됩니다!</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
+            {pool.map((name, i) => (
+              <div
+                key={i}
+                onClick={() => setCardFlipped(prev => ({ ...prev, [i]: !prev[i] }))}
+                className={`h-24 rounded-xl cursor-pointer select-none flex items-center justify-center font-black text-sm transition-all duration-300 transform border-2 ${
+                  cardFlipped[i]
+                    ? "bg-[#F0FFF4] border-[#1B4332] text-[#1B4332] rotate-y-180 shadow-inner"
+                    : "bg-[#1B4332] border-[#2D6A4F] text-[#F2C94C] shadow-md hover:-translate-y-1"
+                }`}
+              >
+                {cardFlipped[i] ? name : `❓ 카드 ${i + 1}`}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 히스토리 현황 */}
+      {picked.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#E8E0D0] p-4 text-xs space-y-2">
+          <span className="font-bold text-[#1B4332]">🏆 최근 뽑힌 학생 목록 ({picked.length}명):</span>
+          <div className="flex flex-wrap gap-1.5">
+            {picked.map((name, i) => (
+              <span key={i} className="px-2.5 py-1 bg-[#F0FFF4] border border-[#9AE6B4] rounded-lg font-bold text-[#1B4332]">
+                {name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

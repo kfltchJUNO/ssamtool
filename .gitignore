@@ -16,6 +16,9 @@
 # production
 /build
 
+# scratch & temp
+/scratch/
+
 # misc
 .DS_Store
 *.pem
