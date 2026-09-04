@@ -8,15 +8,15 @@ import { isChalkEnabled } from "@/lib/monetizationServer";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-// 최신 → 구형 순서로 시도 (4개 폴백)
+// 사용 가능 모델 3종 순차 폴백 (Google AI Studio Quota 기준)
+// 1순위: gemini-3.5-flash-lite (RPD 500회 / RPM 15회 - 초고속, 가장 넉넉함)
+// 2순위: gemini-3.1-flash-lite (RPD 500회 / RPM 15회 - 예비 백업)
+// 3순위: gemini-3.6-flash      (RPD 20회 / RPM 5회 - 고성능 플래시 백업)
 const MODELS = [
-  "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
   "gemini-3.6-flash",
-  "gemini-3.5-flash",
-  "gemini-2.5-flash",
 ];
-let modelIdx = 0;
-const getModel = () => MODELS[modelIdx % MODELS.length];
 
 function calcChalkCost(count: number) {
   // 5문항 이하: 1개, 10문항 이하: 2개, 20문항: 4개
@@ -107,11 +107,13 @@ interface ParsedQuiz {
   questions: QuizQuestion[];
 }
 
-async function generateWithRetry(prompt: string, maxRetries = 5): Promise<string> {
-  for (let i = 0; i < maxRetries; i++) {
-    const currentModel = getModel();
+async function generateWithRetry(prompt: string): Promise<string> {
+  const errors: string[] = [];
+
+  for (let i = 0; i < MODELS.length; i++) {
+    const currentModel = MODELS[i];
     try {
-      console.log(`[Quiz Gemini] 시도 ${i + 1}/${maxRetries} - 모델: ${currentModel}`);
+      console.log(`[Quiz Gemini] (${i + 1}/${MODELS.length}) 모델 호출 시도: ${currentModel}`);
       const model = genAI.getGenerativeModel({
         model: currentModel,
         generationConfig: { responseMimeType: "application/json", maxOutputTokens: 8192 },
@@ -119,25 +121,23 @@ async function generateWithRetry(prompt: string, maxRetries = 5): Promise<string
       const result = await model.generateContent(prompt);
       const text = result.response.text();
       const trimmed = text.replace(/```json|```/g, "").trim();
+
       if (!trimmed.endsWith("}") && !trimmed.endsWith("]")) {
-        console.log(`[Quiz Gemini] 응답 잘림 - 모델: ${currentModel}`);
-        modelIdx++;
-        if (i === maxRetries - 1) throw new Error("응답 잘림");
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
-        continue;
+        console.warn(`[Quiz Gemini] ${currentModel} 응답 잘림`);
+        throw new Error("응답 JSON 형식 잘림");
       }
-      console.log(`[Quiz Gemini] 성공 - 모델: ${currentModel}`);
+
+      console.log(`[Quiz Gemini] 성공! 사용 모델: ${currentModel}`);
       return trimmed;
     } catch (e: unknown) {
-      const status = (e as { status?: number }).status;
-      const isRetryable = status === 503 || status === 429 || status === 500 || status === 404;
-      console.log(`[Quiz Gemini] 실패 - 모델: ${currentModel}, 상태: ${status}, 메시지: ${(e as Error).message}`);
-      modelIdx++;
-      if (!isRetryable || i === maxRetries - 1) throw e;
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+      const errMsg = e instanceof Error ? e.message : String(e);
+      console.error(`[Quiz Gemini] ${currentModel} 실패:`, errMsg);
+      errors.push(`[${currentModel}] ${errMsg}`);
+      // 실패 시 다음 순위 모델로 자동 진행
     }
   }
-  throw new Error("모든 모델 호출 실패");
+
+  throw new Error(`모든 AI 모델(3개) 호출 실패: ${errors.join(" / ")}`);
 }
 
 export async function POST(req: NextRequest) {

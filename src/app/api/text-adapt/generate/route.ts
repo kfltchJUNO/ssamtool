@@ -62,13 +62,22 @@ ${originalText}
   "grammarNotes": "학습 추천 문법 설명"
 }`;
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.6-flash",
-      generationConfig: { responseMimeType: "application/json" },
-    });
-
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text().replace(/```json|```/g, "").trim();
+    let raw = "";
+    const models = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flash"];
+    for (const m of models) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: m,
+          generationConfig: { responseMimeType: "application/json" },
+        });
+        const result = await model.generateContent(prompt);
+        raw = result.response.text().replace(/```json|```/g, "").trim();
+        if (raw) break;
+      } catch (e) {
+        console.error(`[text-adapt] ${m} 실패:`, e);
+      }
+    }
+    if (!raw) throw new Error("모든 AI 모델 호출 실패");
     const parsed = JSON.parse(raw);
 
     return NextResponse.json({

@@ -10,9 +10,30 @@ import { isChalkEnabled } from "@/lib/monetizationServer";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const REGENERATE_COST = 1;
 
-const MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest"];
-const modelIdx = 0;
-const getModel = () => MODELS[modelIdx % MODELS.length];
+const MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.6-flash",
+];
+
+async function generateSingleQuestionWithRetry(prompt: string): Promise<QuizQuestion> {
+  const errors: string[] = [];
+  for (const m of MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: m,
+        generationConfig: { responseMimeType: "application/json" },
+      });
+      const result = await model.generateContent(prompt);
+      const raw = result.response.text().replace(/```json|```/g, "").trim();
+      return JSON.parse(raw) as QuizQuestion;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`[${m}] ${msg}`);
+    }
+  }
+  throw new Error(`모든 모델 호출 실패: ${errors.join(" / ")}`);
+}
 
 async function getUidFromRequest(req: NextRequest): Promise<string> {
   const authHeader = req.headers.get("authorization") || "";
@@ -66,7 +87,7 @@ export async function PATCH(
   return NextResponse.json({ questions: updated });
 }
 
-// ── 문항 1개 재생성 ───────────────────────────────────────────────
+// ── 문항 1개 AI 재생성 (분필 1개) ─────────────────────────────────
 export async function POST(
   req: NextRequest,
   { params }: { params: { quizId: string } }
@@ -102,13 +123,7 @@ export async function POST(
 반드시 JSON 하나만 응답 (다른 텍스트 금지):
 {"type":"${oldQ.type}","question":"...","choices":null,"answer":"...","explanation":"..."}`;
 
-    const model  = genAI.getGenerativeModel({
-      model: getModel(),
-      generationConfig: { responseMimeType: "application/json" },
-    });
-    const result = await model.generateContent(prompt);
-    const raw    = result.response.text().replace(/```json|```/g, "").trim();
-    const newQ   = JSON.parse(raw) as QuizQuestion;
+    const newQ = await generateSingleQuestionWithRetry(prompt);
 
     const updated = [...questions];
     updated[index] = newQ;
