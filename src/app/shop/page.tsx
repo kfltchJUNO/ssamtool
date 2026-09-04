@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { CHALK_PACKAGES } from "@/lib/payments";
+import { auth } from "@/lib/firebase";
 
 const SUBSCRIPTION_PLAN = {
   id: "pro_monthly",
@@ -20,19 +21,66 @@ const SUBSCRIPTION_PLAN = {
 };
 
 const CHALK_USAGE = [
-  { icon: "🎯", label: "AI 한국어 퀴즈 생성 (10문항)", cost: 3 },
+  { icon: "🎯", label: "AI 퀴즈 빠른 생성 (5문항)", cost: 1 },
+  { icon: "🎯", label: "AI 퀴즈 빠른 생성 (10문항)", cost: 2 },
   { icon: "🔄", label: "퀴즈 개별 문항 AI 재생성", cost: 1 },
-  { icon: "🧩", label: "TOPIK 단어장 & 십자말풀이 생성", cost: 3 },
-  { icon: "📖", label: "AI 지문 난이도 자동 변환기", cost: 3 },
+  { icon: "🧩", label: "TOPIK 단어장 & 십자말풀이 생성", cost: 2 },
+  { icon: "📖", label: "AI 지문 난이도 자동 변환기", cost: 2 },
   { icon: "🪪", label: "이름표 PDF / 고화질 인쇄", cost: 0 },
   { icon: "🪑", label: "자리 배치 저장 & 인쇄", cost: 0 },
   { icon: "🔔", label: "수업용 효과음 & 칭찬 스티커판", cost: 0 },
 ];
 
+type DailyStatus = "loading" | "unclaimed" | "claimed" | "claiming" | "done";
+
 export default function ShopPage() {
   const { user, chalk } = useAuth();
   const [hoveredPlan, setHoveredPlan] = useState<string | null>(null);
   const [loadingPkgId, setLoadingPkgId] = useState<string | null>(null);
+  const [dailyStatus, setDailyStatus] = useState<DailyStatus>("loading");
+  const [dailyMsg, setDailyMsg] = useState("");
+
+  // 출석 분필 상태 확인
+  useEffect(() => {
+    if (!user) { setDailyStatus("claimed"); return; }
+    (async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        const res = await fetch("/api/chalk/daily", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        setDailyStatus(data.claimed ? "claimed" : "unclaimed");
+      } catch {
+        setDailyStatus("claimed");
+      }
+    })();
+  }, [user]);
+
+  const handleDailyClaim = async () => {
+    if (!user || dailyStatus !== "unclaimed") return;
+    setDailyStatus("claiming");
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("no token");
+      const res = await fetch("/api/chalk/daily", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDailyStatus("done");
+        setDailyMsg("🎉 출석 완료! 분필 2개가 지급됐어요.");
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setDailyStatus("claimed");
+        setDailyMsg(data.message || "오늘 이미 받으셨어요.");
+      }
+    } catch {
+      setDailyStatus("unclaimed");
+    }
+  };
 
   const handlePurchase = async (packageId: string) => {
     if (!user) {
@@ -101,6 +149,43 @@ export default function ShopPage() {
             <Link href="/" className="mt-2 inline-block text-xs text-[#1B4332] underline underline-offset-2 font-bold">
               홈으로 돌아가 로그인하기
             </Link>
+          </div>
+        )}
+
+        {/* 🎁 오늘의 출석 무료 분필 배너 */}
+        {user && dailyStatus === "unclaimed" && (
+          <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-400 rounded-2xl p-5 flex items-center justify-between gap-4 shadow-sm">
+            <div>
+              <p className="font-black text-amber-800 text-base">🎁 오늘 무료 분필 2개 받기</p>
+              <p className="text-xs text-amber-600 mt-0.5">매일 출석 체크하면 분필 2개를 드려요 (7일 유효)</p>
+            </div>
+            <button
+              onClick={handleDailyClaim}
+              disabled={dailyStatus !== "unclaimed"}
+              className="flex-shrink-0 px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-sm rounded-xl shadow transition-colors whitespace-nowrap"
+            >
+              출석 체크
+            </button>
+          </div>
+        )}
+        {user && dailyStatus === "claiming" && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 text-center text-amber-700 text-sm font-semibold animate-pulse">
+            분필 지급 중...
+          </div>
+        )}
+        {user && (dailyStatus === "done") && dailyMsg && (
+          <div className="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-5 text-center text-emerald-700 text-sm font-bold">
+            {dailyMsg}
+          </div>
+        )}
+        {user && dailyStatus === "claimed" && dailyMsg && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center text-slate-500 text-xs">
+            ✅ 오늘 출석 체크 완료 · 내일 다시 받을 수 있어요
+          </div>
+        )}
+        {user && dailyStatus === "claimed" && !dailyMsg && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center text-slate-500 text-xs">
+            ✅ 오늘 출석 체크 완료 · 내일 또 만나요!
           </div>
         )}
 

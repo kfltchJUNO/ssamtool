@@ -313,6 +313,50 @@ export default function QuizItemManager() {
     return currentUser.getIdToken();
   };
 
+  // ── 빠른 생성: 자유 주제 입력 ────────────────────────────────────
+  const [quickTopic,    setQuickTopic]    = useState("");
+  const [quickCount,    setQuickCount]    = useState(5);
+  const [quickDiff,     setQuickDiff]     = useState("beginner");
+  const [quickLoading,  setQuickLoading]  = useState(false);
+  const [quickError,    setQuickError]    = useState("");
+
+  const quickGenerateQuiz = async () => {
+    const topic = quickTopic.trim();
+    if (!topic) { setQuickError("주제를 입력해주세요."); return; }
+    setQuickLoading(true);
+    setQuickError("");
+    setGenError("");
+    setQuizResult(null);
+    setShareInfo(null);
+    try {
+      const idToken = await getIdToken();
+      const res = await fetch("/api/quiz/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ topic, count: quickCount, difficulty: quickDiff }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 402 || data.error === "INSUFFICIENT_CHALK") {
+          setNeedChalk(true);
+          // 전역 모달 트리거
+          document.dispatchEvent(new CustomEvent("ssamtool:insufficientChalk", {
+            detail: { required: data.required || 1, feature: "AI 퀴즈 빠른 생성" },
+          }));
+        }
+        setQuickError(data.message || "퀴즈 생성에 실패했어요.");
+        return;
+      }
+      setNeedChalk(false);
+      setQuizResult(data);
+      setMode("select"); // 결과 표시를 위해 select 모드로
+    } catch (e) {
+      setQuickError(e instanceof Error ? e.message : "네트워크 오류가 발생했어요.");
+    } finally {
+      setQuickLoading(false);
+    }
+  };
+
   const generateQuiz = async () => {
     if (selectedIds.length === 0) return;
     setIsGenerating(true);
@@ -448,7 +492,65 @@ export default function QuizItemManager() {
           </div>
         </div>
 
-        <DailyChalkBanner getIdToken={getIdToken} />
+        {/* ── 🆕 빠른 생성 카드 (자유 주제 입력) ─────────────────────── */}
+        <div className="mb-5 rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-blue-50 p-5 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="font-black text-indigo-900 text-base flex items-center gap-1.5">
+                <Sparkles size={16} className="text-indigo-500" /> AI 퀴즈 빠른 생성
+              </h2>
+              <p className="text-xs text-indigo-500 mt-0.5">오늘 수업 주제를 한 줄로 입력하면 바로 퀴즈를 만들어드려요</p>
+            </div>
+            <div className="text-xs font-bold text-indigo-400 bg-white border border-indigo-200 px-2 py-1 rounded-lg">
+              🖍️ {quickCount <= 5 ? 1 : quickCount <= 10 ? 2 : quickCount <= 15 ? 3 : 4}개
+            </div>
+          </div>
+
+          <textarea
+            value={quickTopic}
+            onChange={e => { setQuickTopic(e.target.value); setQuickError(""); }}
+            onKeyDown={e => { if (e.key === "Enter" && e.metaKey) quickGenerateQuiz(); }}
+            placeholder="예: 조사 에/에서 구별, 과거 시제 -았/었-, 음식 어휘 10개, 존댓말 만들기..."
+            rows={2}
+            className="w-full rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 ring-indigo-300 resize-none placeholder-slate-300"
+          />
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {/* 난이도 */}
+            <div className="flex gap-1 rounded-lg border border-indigo-100 bg-white p-1">
+              {[{ v: "beginner", l: "초급" }, { v: "intermediate", l: "중급" }, { v: "advanced", l: "고급" }].map(d => (
+                <button key={d.v} onClick={() => setQuickDiff(d.v)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+                    quickDiff === d.v ? "bg-indigo-600 text-white" : "text-slate-500 hover:bg-slate-100"
+                  }`}>{d.l}</button>
+              ))}
+            </div>
+
+            {/* 문항 수 */}
+            <div className="flex gap-1 rounded-lg border border-indigo-100 bg-white p-1">
+              {[5, 10, 15, 20].map(n => (
+                <button key={n} onClick={() => setQuickCount(n)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+                    quickCount === n ? "bg-indigo-600 text-white" : "text-slate-500 hover:bg-slate-100"
+                  }`}>{n}문항</button>
+              ))}
+            </div>
+
+            {/* 생성 버튼 */}
+            <button onClick={quickGenerateQuiz}
+              disabled={quickLoading || !quickTopic.trim()}
+              className="ml-auto flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-40 shadow transition">
+              {quickLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {quickLoading ? "생성 중..." : "퀴즈 생성"}
+            </button>
+          </div>
+
+          {quickError && (
+            <p className="mt-2 text-xs text-rose-500 flex items-center gap-1">
+              <AlertCircle size={12} /> {quickError}
+            </p>
+          )}
+        </div>
 
         {libError && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
