@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   getLayouts, saveLayout, updateLayout, deleteLayout,
-  getSeatingCharts, saveSeatingChart, deleteSeatingChart,
+  getSeatingCharts, saveSeatingChart,
   assignSeats,
   type SeatingLayout, type SeatingChart as SeatingChartDoc,
   type Student, type ClassElement, type AssignOptions, type AssignResult
@@ -474,12 +474,20 @@ export default function SeatingChart({
               ⚙️ 추가 옵션 {showAssignOptions ? "▲" : "▼"}
             </button>
             {assignments.size > 0 && (
-              <button
-                onClick={handleSaveChart}
-                className="px-3 py-2 bg-[#0284C7] text-white text-xs font-bold rounded-lg hover:bg-[#0369A1] transition-colors"
-              >
-                💾 배정 결과 저장
-              </button>
+              <>
+                <button
+                  onClick={handleSaveChart}
+                  className="px-3 py-2 bg-[#0284C7] text-white text-xs font-bold rounded-lg hover:bg-[#0369A1] transition-colors"
+                >
+                  💾 배정 결과 저장
+                </button>
+                <button
+                  onClick={handleClearAssign}
+                  className="px-3 py-2 border border-[#E2E8F0] bg-white text-xs font-semibold text-[#64748B] rounded-lg hover:bg-[#F8FAFC] transition-colors"
+                >
+                  초기화
+                </button>
+              </>
             )}
           </div>
 

@@ -69,8 +69,8 @@ function runTests() {
     console.assert(result.assignments.size === 16, "Test 4-1 Failed");
     const assignedIds = Array.from(result.assignments.values());
     console.assert(assignedIds.includes("st-1") && assignedIds.includes("st-2"), "Test 4-2 Failed: 동명이인 중 1명 누락");
-    const deskId1 = Array.from(result.assignments.entries()).find(([_, sId]) => sId === "st-1")?.[0];
-    const deskId2 = Array.from(result.assignments.entries()).find(([_, sId]) => sId === "st-2")?.[0];
+    const deskId1 = Array.from(result.assignments.entries()).find(entry => entry[1] === "st-1")?.[0];
+    const deskId2 = Array.from(result.assignments.entries()).find(entry => entry[1] === "st-2")?.[0];
     console.assert(deskId1 !== deskId2, "Test 4-3 Failed: 동명이인 2명이 동일 책상 배정됨");
     console.log("✅ Test 4 통과 (동명이인 '김민수' 2명 고유 책상 배정)");
   }

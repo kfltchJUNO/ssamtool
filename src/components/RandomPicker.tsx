@@ -2,18 +2,6 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
-const COLORS = [
-  "#1B4332", "#2D6A4F", "#276749", "#22543D",
-  "#C53030", "#9B2C2C", "#B7791F", "#744210",
-  "#2B6CB0", "#1A365D", "#6B46C1", "#44337A",
-];
-
-function getColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + (hash << 5) - hash;
-  return COLORS[Math.abs(hash) % COLORS.length];
-}
-
 type PickerMode = "slot" | "ladder" | "cards";
 
 interface RandomPickerProps {
@@ -25,7 +13,6 @@ interface RandomPickerProps {
 
 export default function RandomPicker({
   preloadedStudents = [],
-  preloadedLabel = "",
   onOpenClassPanel,
   isLoggedIn
 }: RandomPickerProps) {
@@ -43,7 +30,6 @@ export default function RandomPicker({
   const [cardFlipped, setCardFlipped] = useState<Record<number, boolean>>({});
 
   const rollRef = useRef<NodeJS.Timeout | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const pool = excludePicked
     ? nameList.filter((n) => !picked.includes(n))

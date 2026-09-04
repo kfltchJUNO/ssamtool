@@ -52,7 +52,6 @@ export default function StudentMemo({
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [activeStudent, setActiveStudent] = useState<string | null>(null);
   const [newField, setNewField] = useState("");
   const [showFieldSettings, setShowFieldSettings] = useState(false);
 
@@ -98,7 +97,6 @@ export default function StudentMemo({
     if (preloadedStudents.length > 0) {
       setStudents(preloadedStudents);
       setMemos(preloadedStudents.map(emptyMemo));
-      setActiveStudent(preloadedStudents[0] ?? null);
       if (uid && preloadedGroupId) loadMemos(preloadedGroupId, preloadedStudents);
     }
   }, [preloadedStudents, preloadedGroupId, uid, loadMemos]);
