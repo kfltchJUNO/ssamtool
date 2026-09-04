@@ -1,12 +1,15 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import LadderGame from "@/components/picker/LadderGame";
 import RacingGame from "@/components/picker/RacingGame";
 import RouletteGame from "@/components/picker/RouletteGame";
+import BombGame from "@/components/picker/BombGame";
+import BalloonGame from "@/components/picker/BalloonGame";
+import PlinkoGame from "@/components/picker/PlinkoGame";
 import { playTick, playFanfare } from "@/lib/sound";
 
-export type PickerMode = "slot" | "ladder" | "racing" | "roulette" | "cards";
+export type PickerMode = "slot" | "ladder" | "racing" | "bomb" | "balloon" | "plinko" | "roulette" | "cards";
 
 interface RandomPickerProps {
   preloadedStudents?: string[];
@@ -256,19 +259,22 @@ export default function RandomPicker({
         </div>
       )}
 
-      {/* 5대 인터랙티브 연출 모드 선택 탭 (Task 7) */}
+      {/* 인터랙티브 연출 모드 선택 탭 */}
       <div className="flex gap-2 justify-center flex-wrap">
         {[
           { id: "slot",     label: "🎰 빠른 슬롯" },
           { id: "ladder",   label: "🪜 사다리타기" },
-          { id: "racing",   label: "🏎️ 달리기 레이싱" },
+          { id: "racing",   label: "🏎️ 레이싱" },
+          { id: "bomb",     label: "💣 폭탄 돌리기" },
+          { id: "balloon",  label: "🎈 풍선 다트" },
+          { id: "plinko",   label: "🪙 플링코 구슬" },
           { id: "roulette", label: "🎡 회전 룰렛" },
-          { id: "cards",    label: "🎴 3D 카드 뒤집기" },
+          { id: "cards",    label: "🎴 3D 카드" },
         ].map(m => (
           <button
             key={m.id}
             onClick={() => setMode(m.id as PickerMode)}
-            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all ${
+            className={`px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all ${
               mode === m.id
                 ? "bg-[#1B4332] text-white shadow-lg scale-105"
                 : "bg-white text-[#475569] border border-[#CBD5E1] hover:border-[#1B4332]"
@@ -344,7 +350,61 @@ export default function RandomPicker({
         </div>
       )}
 
-      {/* ── 4. 회전 룰렛 모드 ── */}
+      {/* ── 4. 시한폭탄 돌리기 모드 ── */}
+      {mode === "bomb" && (
+        <div className="bg-white rounded-3xl border-2 border-red-500 p-6 shadow-xl">
+          {pool.length < 2 ? (
+            <div className="p-8 text-center text-gray-500 font-bold">
+              폭탄 돌리기는 최소 2명 이상의 학생이 필요합니다.
+            </div>
+          ) : (
+            <BombGame
+              candidates={pool}
+              pickCount={pickCount}
+              onFinish={handleGameFinish}
+              soundEnabled={soundEnabled}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── 5. 풍선 다트 팡팡 모드 ── */}
+      {mode === "balloon" && (
+        <div className="bg-white rounded-3xl border-2 border-pink-400 p-6 shadow-xl">
+          {pool.length < 2 ? (
+            <div className="p-8 text-center text-gray-500 font-bold">
+              풍선 다트는 최소 2명 이상의 학생이 필요합니다.
+            </div>
+          ) : (
+            <BalloonGame
+              candidates={pool}
+              pickCount={pickCount}
+              onFinish={handleGameFinish}
+              soundEnabled={soundEnabled}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── 6. 플링코 구슬 낙하 모드 ── */}
+      {mode === "plinko" && (
+        <div className="bg-white rounded-3xl border-2 border-amber-500 p-6 shadow-xl">
+          {pool.length < 2 ? (
+            <div className="p-8 text-center text-gray-500 font-bold">
+              플링코 구슬은 최소 2명 이상의 학생이 필요합니다.
+            </div>
+          ) : (
+            <PlinkoGame
+              candidates={pool}
+              pickCount={pickCount}
+              onFinish={handleGameFinish}
+              soundEnabled={soundEnabled}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── 7. 회전 룰렛 모드 ── */}
       {mode === "roulette" && (
         <div className="bg-white rounded-3xl border-2 border-[#1B4332] p-6 shadow-xl">
           {pool.length < 2 ? (
