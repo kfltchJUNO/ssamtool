@@ -5,6 +5,9 @@ import { adminAuth } from "@/lib/firebase-admin";
 import { deductCredits, refundCredits, InsufficientCreditsError } from "@/lib/credits";
 import { isChalkEnabled } from "@/lib/monetizationServer";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const WORKSHEET_COST = 3;
 
@@ -61,7 +64,7 @@ export async function POST(req: NextRequest) {
 }`;
 
     let raw = "";
-    const models = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-flash"];
+    const models = ["gemini-3.1-flash-lite", "gemini-3.6-flash", "gemini-flash-latest"];
     for (const m of models) {
       try {
         const model = genAI.getGenerativeModel({

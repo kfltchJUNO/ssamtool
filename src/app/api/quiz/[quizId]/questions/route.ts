@@ -10,10 +10,13 @@ import { isChalkEnabled } from "@/lib/monetizationServer";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const REGENERATE_COST = 1;
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 const MODELS = [
-  "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
   "gemini-3.6-flash",
+  "gemini-flash-latest",
 ];
 
 async function generateSingleQuestionWithRetry(prompt: string): Promise<QuizQuestion> {

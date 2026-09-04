@@ -8,14 +8,17 @@ import { isChalkEnabled } from "@/lib/monetizationServer";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-// 사용 가능 모델 3종 순차 폴백 (Google AI Studio Quota 기준)
-// 1순위: gemini-3.5-flash-lite (RPD 500회 / RPM 15회 - 초고속, 가장 넉넉함)
-// 2순위: gemini-3.1-flash-lite (RPD 500회 / RPM 15회 - 예비 백업)
-// 3순위: gemini-3.6-flash      (RPD 20회 / RPM 5회 - 고성능 플래시 백업)
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+// 사용 가능 최적 3개 모델 순차 폴백
+// 1순위: gemini-3.1-flash-lite (일일 500회 / 분당 15회 - 초고속 3초 응답, 가장 쾌적함)
+// 2순위: gemini-3.6-flash      (일일 20회 / 분당 5회 - 고성능 Flash)
+// 3순위: gemini-flash-latest   (Google 최신 안정 Flash 별칭)
 const MODELS = [
-  "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
   "gemini-3.6-flash",
+  "gemini-flash-latest",
 ];
 
 function calcChalkCost(count: number) {
@@ -207,16 +210,22 @@ export async function POST(req: NextRequest) {
 
     const raw = await generateWithRetry(prompt);
 
-    let parsed: ParsedQuiz;
+    let parsed: any;
     try {
-      parsed = JSON.parse(raw) as ParsedQuiz;
+      parsed = JSON.parse(raw);
     } catch {
       if (charged) await refundCredits(uid, chalkCost, "퀴즈 생성 실패(파싱 오류)");
       charged = false;
       return NextResponse.json({ error: "GENERATION_FAILED", message: "퀴즈 응답을 해석하지 못했습니다." }, { status: 502 });
     }
 
-    if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+    const questions: QuizQuestion[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.questions)
+      ? parsed.questions
+      : [];
+
+    if (questions.length === 0) {
       if (charged) await refundCredits(uid, chalkCost, "퀴즈 생성 실패(빈 결과)");
       charged = false;
       return NextResponse.json({ error: "GENERATION_FAILED", message: "문항이 생성되지 않았습니다." }, { status: 502 });
@@ -236,7 +245,7 @@ export async function POST(req: NextRequest) {
       grammarPoints: !hasTopic ? grammarPoints : null,
       difficulty,
       questionTypes: questionTypes || null,
-      questions: parsed.questions,
+      questions,
       createdBy: uid,
       createdAt: FieldValue.serverTimestamp(),
       isPublished: false,
@@ -246,7 +255,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       quizId: quizRef.id,
-      questions: parsed.questions,
+      questions,
       chalkSpent: chalkCost,
       title,
     });
