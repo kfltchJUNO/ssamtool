@@ -27,8 +27,8 @@ export default function LadderGame({
   onFinish,
   soundEnabled,
 }: LadderGameProps) {
-  // 최대 10명까지 지원
-  const activeCandidates = useMemo(() => candidates.slice(0, 10), [candidates]);
+  // 최대 12명까지 지원
+  const activeCandidates = useMemo(() => candidates.slice(0, 12), [candidates]);
   const numCols = activeCandidates.length;
 
   // 하단 당첨 결과 기본값 생성
@@ -36,12 +36,14 @@ export default function LadderGame({
   const [rungs, setRungs] = useState<Rung[]>([]);
   const [running, setRunning] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [wonStudents, setWonStudents] = useState<string[]>([]);
 
   // 각 학생의 사다리 완주 결과 매핑 (studentIndex -> destinationIndex)
   const [finalMap, setFinalMap] = useState<Record<number, number>>({});
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animRef = useRef<number | null>(null);
+  const studentPathsRef = useRef<{ x: number; y: number }[][]>([]);
 
   // 사다리 가로줄 및 도착지점 초기화
   const initLadder = useCallback(() => {
@@ -98,11 +100,15 @@ export default function LadderGame({
     setFinalMap(mapping);
     setCompleted(false);
     setRunning(false);
+    setWonStudents([]);
   }, [numCols, pickCount]);
 
+  // 후보 변경 시 초기화 (단, 레이싱 중이거나 완료 확인 대기 중일 때는 리셋 방지)
   useEffect(() => {
-    initLadder();
-  }, [initLadder]);
+    if (!running && !completed) {
+      initLadder();
+    }
+  }, [initLadder, running, completed]);
 
   // 기본 사다리 프레임 캔버스에 그리기
   const drawBaseLadder = useCallback(() => {
@@ -146,15 +152,50 @@ export default function LadderGame({
     }
   }, [numCols, rungs]);
 
-  useEffect(() => {
+  // 완주된 전체 경로 그리기
+  const drawFullPaths = useCallback((paths: { x: number; y: number }[][]) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
     drawBaseLadder();
+
+    paths.forEach((pts, s) => {
+      if (!pts || pts.length === 0) return;
+      ctx.strokeStyle = LINE_COLORS[s % LINE_COLORS.length];
+      ctx.lineWidth = 5;
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.stroke();
+
+      // 끝 지점 헤드 도트
+      const lastPt = pts[pts.length - 1];
+      ctx.beginPath();
+      ctx.arc(lastPt.x, lastPt.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = LINE_COLORS[s % LINE_COLORS.length];
+      ctx.fill();
+    });
   }, [drawBaseLadder]);
+
+  useEffect(() => {
+    if (!completed) {
+      drawBaseLadder();
+    } else if (studentPathsRef.current.length > 0) {
+      drawFullPaths(studentPathsRef.current);
+    }
+  }, [drawBaseLadder, drawFullPaths, completed]);
 
   // 사다리 전체 출발 애니메이션
   const startAll = () => {
     if (running || numCols < 2) return;
     setRunning(true);
     setCompleted(false);
+    setWonStudents([]);
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -192,6 +233,7 @@ export default function LadderGame({
       path.push({ x: colWidth * curCol + colWidth / 2, y: h - 20 });
       studentPaths.push(path);
     }
+    studentPathsRef.current = studentPaths;
 
     const duration = 5000; // 5초 동안 하강
     const startTime = performance.now();
@@ -246,6 +288,7 @@ export default function LadderGame({
       if (progress < 1) {
         animRef.current = requestAnimationFrame(animate);
       } else {
+        // 완주!
         setRunning(false);
         setCompleted(true);
         playFanfare(soundEnabled, 0.6);
@@ -258,7 +301,8 @@ export default function LadderGame({
             winners.push(activeCandidates[s]);
           }
         }
-        onFinish(winners);
+        setWonStudents(winners);
+        // onFinish는 사용자가 확인 버튼을 누를 때 호출!
       }
     };
 
@@ -273,6 +317,8 @@ export default function LadderGame({
     setCompleted(true);
     playFanfare(soundEnabled, 0.6);
 
+    drawFullPaths(studentPathsRef.current);
+
     const winners: string[] = [];
     for (let s = 0; s < numCols; s++) {
       const destIdx = finalMap[s];
@@ -280,7 +326,24 @@ export default function LadderGame({
         winners.push(activeCandidates[s]);
       }
     }
-    onFinish(winners);
+    setWonStudents(winners);
+    // onFinish는 사용자가 확인 버튼을 누를 때 호출!
+  };
+
+  // ── 사용자가 '확인 (다음 사다리 진행)' 클릭 시 ─────────────────────
+  const handleConfirmNextLadder = () => {
+    if (wonStudents.length > 0) {
+      onFinish(wonStudents);
+    }
+    setCompleted(false);
+    setWonStudents([]);
+  };
+
+  // ── '다시 타기 (동일 사다리)' ──────────────────────────────────────
+  const handleRerun = () => {
+    setCompleted(false);
+    setWonStudents([]);
+    startAll();
   };
 
   return (
@@ -332,53 +395,69 @@ export default function LadderGame({
         })}
       </div>
 
-      {/* 액션 컨트롤 버튼 */}
-      <div className="flex gap-3 justify-center items-center pt-2">
-        <button
-          onClick={startAll}
-          disabled={running || numCols < 2}
-          className="px-8 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-lg rounded-2xl hover:from-emerald-700 hover:to-teal-800 disabled:opacity-40 shadow-xl transition-transform active:scale-95"
-        >
-          {running ? "🪜 사다리 내려가는 중...!" : "🪜 사다리 출발!"}
-        </button>
-
-        <button
-          onClick={initLadder}
-          disabled={running}
-          className="px-4 py-3.5 bg-white border border-slate-300 text-slate-700 text-sm font-bold rounded-2xl hover:border-slate-500 shadow-sm"
-        >
-          ↺ 사다리 다시 그리기
-        </button>
-
-        {running && (
-          <button
-            onClick={skip}
-            className="px-4 py-3.5 bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl hover:bg-gray-300"
-          >
-            ⏩ 스킵
-          </button>
-        )}
-      </div>
-
-      {/* 당첨자 요약 표 */}
+      {/* ── 🎉 사다리 완주 축하 및 다음 진행 카드 (확인 누를 때까지 영구 유지!) ── */}
       {completed && (
-        <div className="bg-white rounded-2xl border-2 border-emerald-500 p-4 text-center shadow-lg space-y-2">
-          <p className="text-xs font-bold text-emerald-700">🎉 사다리타기 결과</p>
-          <div className="flex flex-wrap gap-2 justify-center">
-            {activeCandidates.map((name, sIdx) => {
-              const destIdx = finalMap[sIdx];
-              const dest = destinations[destIdx];
-              if (!dest?.includes("당첨")) return null;
-              return (
-                <span
-                  key={sIdx}
-                  className="px-3 py-1.5 bg-amber-100 text-amber-900 border border-amber-300 font-black rounded-xl text-sm shadow-sm"
-                >
-                  👑 {name} ({dest})
-                </span>
-              );
-            })}
+        <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-700 text-white rounded-3xl p-6 shadow-2xl space-y-4 animate-[fadeInUp_0.25s_ease]">
+          <div className="text-center space-y-1.5">
+            <div className="text-4xl animate-bounce">🎉</div>
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight drop-shadow-md">
+              사다리타기 당첨! {wonStudents.join(", ")}
+            </h2>
+            <p className="text-xs text-emerald-100">
+              확인을 누르면 당첨된 학생이 제외되고 다음 사다리를 준비합니다.
+            </p>
           </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              onClick={handleConfirmNextLadder}
+              className="flex-1 py-4 bg-white text-emerald-900 font-black text-lg rounded-2xl shadow-xl hover:bg-emerald-50 transition-transform active:scale-95 flex items-center justify-center gap-2"
+            >
+              <span>✅ 확인 (다음 사다리 진행)</span>
+            </button>
+            <button
+              onClick={handleRerun}
+              className="px-6 py-4 bg-black/20 hover:bg-black/30 text-white font-bold text-sm rounded-2xl border border-white/30 transition-colors"
+            >
+              ↺ 이번 사다리 다시 타기
+            </button>
+            <button
+              onClick={initLadder}
+              className="px-5 py-4 bg-black/20 hover:bg-black/30 text-white font-bold text-sm rounded-2xl border border-white/30 transition-colors"
+            >
+              🪜 사다리 새로 그리기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 기본 출발 컨트롤 버튼 (진행 중일 때 or 대기 중일 때) */}
+      {!completed && (
+        <div className="flex gap-3 justify-center items-center pt-2">
+          <button
+            onClick={startAll}
+            disabled={running || numCols < 2}
+            className="px-8 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-lg rounded-2xl hover:from-emerald-700 hover:to-teal-800 disabled:opacity-40 shadow-xl transition-transform active:scale-95"
+          >
+            {running ? "🪜 사다리 내려가는 중...!" : "🪜 사다리 출발!"}
+          </button>
+
+          <button
+            onClick={initLadder}
+            disabled={running}
+            className="px-4 py-3.5 bg-white border border-slate-300 text-slate-700 text-sm font-bold rounded-2xl hover:border-slate-500 shadow-sm"
+          >
+            ↺ 사다리 다시 그리기
+          </button>
+
+          {running && (
+            <button
+              onClick={skip}
+              className="px-4 py-3.5 bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl hover:bg-gray-300"
+            >
+              ⏩ 스킵
+            </button>
+          )}
         </div>
       )}
     </div>
