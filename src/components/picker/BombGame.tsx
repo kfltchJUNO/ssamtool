@@ -26,12 +26,10 @@ export default function BombGame({
   const [fuseProgress, setFuseProgress] = useState(0); // 0 to 1
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const animFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
   }, []);
 
@@ -98,7 +96,7 @@ export default function BombGame({
   // ── 확인 누를 때 비로소 다음 게임으로 진행 ──
   const handleConfirmNext = () => {
     if (winner) {
-      onFinish([winner]);
+      onFinish([winner].slice(0, pickCount));
     }
     setExploded(false);
     setWinner(null);

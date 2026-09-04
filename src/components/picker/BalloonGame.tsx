@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { playTick, playBooster, playFanfare } from "@/lib/sound";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { playBooster, playFanfare } from "@/lib/sound";
 
 interface BalloonGameProps {
   candidates: string[];
-  pickCount: number;
+  pickCount?: number;
   onFinish: (winnerNames: string[]) => void;
   soundEnabled: boolean;
 }
@@ -27,7 +27,7 @@ interface Balloon {
 
 export default function BalloonGame({
   candidates,
-  pickCount,
+  pickCount = 1,
   onFinish,
   soundEnabled,
 }: BalloonGameProps) {
@@ -114,7 +114,7 @@ export default function BalloonGame({
   // ── 확인 누를 때 비로소 다음 게임으로 진행 ──
   const handleConfirmNext = () => {
     if (winner) {
-      onFinish([winner]);
+      onFinish([winner].slice(0, pickCount));
     }
     initBalloons();
   };
