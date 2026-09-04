@@ -142,14 +142,14 @@ export async function getChalkLogs(limitN = 100): Promise<ChalkLog[]> {
 // ── 피드백 ────────────────────────────────────────────────────────
 export async function getFeedbacks(status?: string): Promise<Feedback[]> {
   const q = status
-    ? query(collection(db, "feedbacks"), where("status","==",status), orderBy("createdAt","desc"), limit(100))
-    : query(collection(db, "feedbacks"), orderBy("createdAt","desc"), limit(100));
+    ? query(collection(db, "ssamtoolFeedbacks"), where("status","==",status), orderBy("createdAt","desc"), limit(100))
+    : query(collection(db, "ssamtoolFeedbacks"), orderBy("createdAt","desc"), limit(100));
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as Feedback));
 }
 
 export async function updateFeedbackStatus(id: string, status: "pending"|"read"|"resolved") {
-  await updateDoc(doc(db, "feedbacks", id), { status });
+  await updateDoc(doc(db, "ssamtoolFeedbacks", id), { status });
 }
 
 // ── 통계 ──────────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ export async function getStats() {
   const [usersSnap, logsSnap, feedbacksSnap] = await Promise.all([
     getDocs(query(collection(db, "users"), limit(500))),
     getDocs(query(collection(db, "chalkLogs"), orderBy("createdAt","desc"), limit(50))),
-    getDocs(query(collection(db, "feedbacks"), where("status","==","pending"), limit(50))),
+    getDocs(query(collection(db, "ssamtoolFeedbacks"), where("status","==","pending"), limit(50))),
   ]);
 
   const now = new Date();
