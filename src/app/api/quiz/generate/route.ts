@@ -9,11 +9,10 @@ import { isChalkEnabled } from "@/lib/monetizationServer";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 const MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-pro",
-  "gemini-3.1-flash-lite",
-  "gemini-3-flash",
-  "gemini-2.5-flash-lite",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-flash-latest",
+  "gemini-pro-latest",
 ];
 let modelIdx = 0;
 const getModel = () => MODELS[modelIdx % MODELS.length];

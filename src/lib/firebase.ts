@@ -3,7 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyAfbx5hTUN4ftle0gBjg0r9Mv-U-su2sGc",
+  apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
   authDomain:        process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "wooriban1.firebaseapp.com",
   projectId:         process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "wooriban1",
   storageBucket:     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "wooriban1.firebasestorage.app",

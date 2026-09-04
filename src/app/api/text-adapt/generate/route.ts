@@ -63,7 +63,7 @@ ${originalText}
 }`;
 
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.6-flash",
       generationConfig: { responseMimeType: "application/json" },
     });
 
