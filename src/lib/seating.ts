@@ -247,8 +247,15 @@ const memoDoc = (uid: string, groupId: string) => doc(db, "studentMemos", uid, "
 
 // ── 레이아웃 (교실 구조) CRUD ─────────────────────────────────────
 export async function getLayouts(uid: string): Promise<SeatingLayout[]> {
-  const snap = await getDocs(query(layoutCol(uid), orderBy("createdAt", "asc")));
-  return snap.docs.map(d => {
+  let docs;
+  try {
+    const snap = await getDocs(query(layoutCol(uid), orderBy("createdAt", "asc")));
+    docs = snap.docs;
+  } catch {
+    const snap = await getDocs(layoutCol(uid));
+    docs = snap.docs;
+  }
+  return docs.map(d => {
     const data = d.data();
     // 마이그레이션: 기존 desks에 studentName이 들어가 있던 데이터를 교실 기물 요소로 정리
     const elements: ClassElement[] = Array.isArray(data.elements)
@@ -299,8 +306,15 @@ export async function deleteLayout(uid: string, lid: string) {
 
 // ── 시점별 배치 결과 (SeatingChart) CRUD ─────────────────────────
 export async function getSeatingCharts(uid: string, layoutId?: string): Promise<SeatingChart[]> {
-  const snap = await getDocs(query(chartCol(uid), orderBy("createdAt", "desc")));
-  const charts = snap.docs.map(d => ({ id: d.id, ...d.data() } as SeatingChart));
+  let docs;
+  try {
+    const snap = await getDocs(query(chartCol(uid), orderBy("createdAt", "desc")));
+    docs = snap.docs;
+  } catch {
+    const snap = await getDocs(chartCol(uid));
+    docs = snap.docs;
+  }
+  const charts = docs.map(d => ({ id: d.id, ...d.data() } as SeatingChart));
   if (layoutId) {
     return charts.filter(c => c.layoutId === layoutId);
   }
