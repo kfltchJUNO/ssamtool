@@ -1254,7 +1254,7 @@ export function DailyChalkBanner({ getIdToken }) {
   useEffect(() => {
     authFetch("/api/chalk/daily", { method: "GET" })
       .then(res => res.json())
-      .then(data => { if (data.claimedToday) setStatus("already"); })
+      .then(data => { if (data.claimed) setStatus("already"); })
       .catch(() => {});
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1263,8 +1263,14 @@ export function DailyChalkBanner({ getIdToken }) {
     try {
       const res  = await authFetch("/api/chalk/daily", { method: "POST" });
       const data = await res.json();
-      if (data.granted) { setStatus("claimed"); setMsg(data.message); }
-      else { setStatus("already"); setMsg(data.message || "오늘은 이미 받았어요."); }
+      if (data.success) {
+        setStatus("claimed");
+        setMsg(data.message || "출석 분필 2개가 지급되었습니다!");
+        setTimeout(() => { window.location.reload(); }, 1500);
+      } else {
+        setStatus("already");
+        setMsg(data.message || "오늘 출석 체크를 이미 완료했어요.");
+      }
     } catch {
       setStatus("error"); setMsg("오류가 발생했어요.");
     } finally { setBusy(false); }

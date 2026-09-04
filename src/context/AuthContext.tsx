@@ -48,12 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const now = new Date();
+  const admin  = isAdmin(user) || userDoc?.grade === "admin";
   const chalkPaid  = userDoc?.chalk ?? 0;
   const chalkEvent = (userDoc?.chalkEvents ?? [])
     .filter(e => e.expiresAt?.toDate() > now)
     .reduce((s, e) => s + e.amount, 0);
-  const chalk  = chalkPaid + chalkEvent;
-  const admin  = isAdmin(user);
+  // 관리자는 테스트를 위한 무제한 분필(999개 이상) 부여
+  const chalk  = admin ? Math.max(999, chalkPaid + chalkEvent) : (chalkPaid + chalkEvent);
 
   return (
     <AuthContext.Provider value={{

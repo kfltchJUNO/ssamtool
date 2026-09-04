@@ -53,11 +53,12 @@ export default function AdminDashboard() {
       </div>
 
       {/* 바로가기 */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { href: "/admin/users",      icon: "👤", label: "유저 관리",   desc: "분필 지급 · 유저 검색" },
           { href: "/admin/feedbacks",  icon: "💬", label: "피드백 관리", desc: "오류신고 · 문의 처리" },
           { href: "/admin/chalk-logs", icon: "✏️", label: "분필 로그",   desc: "지급 이력 확인" },
+          { href: "/admin/coupang",    icon: "🛒", label: "쿠팡 광고",   desc: "파트너스 링크 관리 및 전시" },
         ].map(({ href, icon, label, desc }) => (
           <Link key={href} href={href}
             className="bg-white rounded-xl border border-[#E8E0D0] p-5 shadow-sm hover:border-[#1B4332] hover:shadow-md transition-all group">

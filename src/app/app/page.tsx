@@ -13,7 +13,7 @@ import GroupDivider from "@/components/GroupDivider";
 import SpeakingOrder from "@/components/SpeakingOrder";
 import StudentMemo from "@/components/MemoSheet";
 import FeedbackButton from "@/components/FeedbackButton";
-import QuizItemManager from "@/components/quiz-item-manager";
+import QuizItemManager, { DailyChalkBanner } from "@/components/quiz-item-manager";
 import InAppBrowserBanner from "@/components/InAppBrowserBanner";
 import { AdSense, CoupangBanner, CoupangSearchWidget, KakaoAdFitResponsive, AppPromoBar } from "@/components/ads/AdBanners";
 import ClassroomTools from "@/components/ClassroomTools";
@@ -262,6 +262,9 @@ export default function AppPage() {
             </div>
 
             <div className="p-6 space-y-4">
+              {/* 출석 체크 배너 */}
+              <DailyChalkBanner getIdToken={async () => user ? (await user.getIdToken()) : ""} />
+
               {/* 결제 분필 */}
               <div className="flex items-center justify-between p-4 bg-[#F0FFF4] rounded-xl border border-[#9AE6B4]">
                 <div className="flex items-center gap-3">

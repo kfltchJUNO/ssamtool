@@ -11,11 +11,17 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
-export const ADMIN_EMAIL = "ot.helper7@gmail.com";
+export const ADMIN_EMAILS = ["ot.helper@gmail.com", "ot.helper7@gmail.com"];
+export const ADMIN_EMAIL = "ot.helper@gmail.com";
+
+export function isAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase());
+}
 
 // ── 관리자 여부 ────────────────────────────────────────────────────
 export function isAdmin(user: User | null): boolean {
-  return user?.email === ADMIN_EMAIL;
+  return isAdminEmail(user?.email);
 }
 
 // ── 구글 로그인 ───────────────────────────────────────────────────
@@ -72,7 +78,7 @@ export async function ensureUserDoc(user: User): Promise<void> {
       email:       user.email,
       displayName: user.displayName ?? "",
       photoURL:    user.photoURL ?? "",
-      grade:       user.email === ADMIN_EMAIL ? "admin" : "free",
+      grade:       isAdminEmail(user.email) ? "admin" : "free",
       chalk:       0,          // 일반 분필 잔액
       chalkEvents: [],         // 이벤트 분필 배열 [{amount, expiresAt}]
       createdAt:   serverTimestamp(),

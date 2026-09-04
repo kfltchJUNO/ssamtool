@@ -17,8 +17,14 @@ export interface CoupangLink {
 const COL = collection(db, "adLinks", "coupang", "links");
 
 export async function getCoupangLinks(): Promise<CoupangLink[]> {
-  const snap = await getDocs(query(COL, orderBy("createdAt", "asc")));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as CoupangLink));
+  try {
+    const snap = await getDocs(query(COL, orderBy("createdAt", "asc")));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as CoupangLink));
+  } catch (e) {
+    console.warn("[getCoupangLinks fallback without orderBy]", e);
+    const snap = await getDocs(COL);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as CoupangLink));
+  }
 }
 
 export async function addCoupangLink(data: Omit<CoupangLink, "id" | "createdAt">) {
@@ -54,25 +60,29 @@ export async function getActiveCoupangLinks(): Promise<{ regular: string[]; even
 
 // 초기 데이터 시드 (최초 1회)
 export async function seedCoupangLinks() {
-  const snap = await getDocs(COL);
-  if (snap.size > 0) return; // 이미 있으면 스킵
+  try {
+    const snap = await getDocs(COL);
+    if (snap.size > 0) return; // 이미 있으면 스킵
 
-  const defaults: Omit<CoupangLink, "id" | "createdAt">[] = [
-    { url: "https://link.coupang.com/a/eAxg0Spq9Y", label: "A4 코팅지",      type: "regular", expiresAt: null, active: true },
-    { url: "https://link.coupang.com/a/eAxjQt79H2", label: "이름표 목걸이",   type: "regular", expiresAt: null, active: true },
-    { url: "https://link.coupang.com/a/eAxlEMrpZs", label: "칭찬 스탬프",    type: "regular", expiresAt: null, active: true },
-    { url: "https://link.coupang.com/a/eAxnLVYjbE", label: "토픽 교재",      type: "regular", expiresAt: null, active: true },
-    { url: "https://link.coupang.com/a/eAzUILMBSm", label: "한국어 교재",    type: "regular", expiresAt: null, active: true },
-    { url: "https://link.coupang.com/a/eAzWRBk8VU", label: "칭찬 스티커",    type: "regular", expiresAt: null, active: true },
-    { url: "https://link.coupang.com/a/eAzXMvMgCa", label: "칭찬 도장",      type: "regular", expiresAt: null, active: true },
-    { url: "https://link.coupang.com/a/eAzYAM1Rp6", label: "TOPIK 교재",    type: "regular", expiresAt: null, active: true },
-    { url: "https://link.coupang.com/a/eAAcTgsKOq", label: "이벤트 (~7/30)", type: "event",   expiresAt: "2026-07-30T23:59:59", active: true },
-    { url: "https://link.coupang.com/a/eAAfDnrAFU", label: "이벤트 (~7/05)", type: "event",   expiresAt: "2026-07-05T23:59:59", active: true },
-    { url: "https://link.coupang.com/a/eAAkqkp2ku", label: "이벤트 (~7/30)", type: "event",   expiresAt: "2026-07-30T23:59:59", active: true },
-    { url: "https://link.coupang.com/a/eAAmsxe0aG", label: "이벤트 (~7/30)", type: "event",   expiresAt: "2026-07-30T23:59:59", active: true },
-  ];
+    const defaults: Omit<CoupangLink, "id" | "createdAt">[] = [
+      { url: "https://link.coupang.com/a/eAxg0Spq9Y", label: "A4 코팅지",      type: "regular", expiresAt: null, active: true },
+      { url: "https://link.coupang.com/a/eAxjQt79H2", label: "이름표 목걸이",   type: "regular", expiresAt: null, active: true },
+      { url: "https://link.coupang.com/a/eAxlEMrpZs", label: "칭찬 스탬프",    type: "regular", expiresAt: null, active: true },
+      { url: "https://link.coupang.com/a/eAxnLVYjbE", label: "토픽 교재",      type: "regular", expiresAt: null, active: true },
+      { url: "https://link.coupang.com/a/eAzUILMBSm", label: "한국어 교재",    type: "regular", expiresAt: null, active: true },
+      { url: "https://link.coupang.com/a/eAzWRBk8VU", label: "칭찬 스티커",    type: "regular", expiresAt: null, active: true },
+      { url: "https://link.coupang.com/a/eAzXMvMgCa", label: "칭찬 도장",      type: "regular", expiresAt: null, active: true },
+      { url: "https://link.coupang.com/a/eAzYAM1Rp6", label: "TOPIK 교재",    type: "regular", expiresAt: null, active: true },
+      { url: "https://link.coupang.com/a/eAAcTgsKOq", label: "이벤트 (~7/30)", type: "event",   expiresAt: "2026-07-30T23:59:59", active: true },
+      { url: "https://link.coupang.com/a/eAAfDnrAFU", label: "이벤트 (~7/05)", type: "event",   expiresAt: "2026-07-05T23:59:59", active: true },
+      { url: "https://link.coupang.com/a/eAAkqkp2ku", label: "이벤트 (~7/30)", type: "event",   expiresAt: "2026-07-30T23:59:59", active: true },
+      { url: "https://link.coupang.com/a/eAAmsxe0aG", label: "이벤트 (~7/30)", type: "event",   expiresAt: "2026-07-30T23:59:59", active: true },
+    ];
 
-  for (const d of defaults) {
-    await addDoc(COL, { ...d, createdAt: serverTimestamp() });
+    for (const d of defaults) {
+      await addDoc(COL, { ...d, createdAt: serverTimestamp() });
+    }
+  } catch (err) {
+    console.error("[seedCoupangLinks Error]", err);
   }
 }

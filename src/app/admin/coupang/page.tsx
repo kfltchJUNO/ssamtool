@@ -5,6 +5,7 @@ import {
   getCoupangLinks, addCoupangLink, updateCoupangLink,
   deleteCoupangLink, seedCoupangLinks, type CoupangLink,
 } from "@/lib/adLinks";
+import { CoupangBanner, CoupangSearchWidget } from "@/components/ads/AdBanners";
 
 export default function AdminCoupangPage() {
   const [links,   setLinks]   = useState<CoupangLink[]>([]);
@@ -15,10 +16,17 @@ export default function AdminCoupangPage() {
 
   const load = async () => {
     setLoading(true);
+    setError("");
     try {
       await seedCoupangLinks(); // 최초 1회 기본값 시드
-      setLinks(await getCoupangLinks());
-    } finally { setLoading(false); }
+      const data = await getCoupangLinks();
+      setLinks(data);
+    } catch (err) {
+      console.error("[AdminCoupangPage load Error]", err);
+      setError("쿠팡 링크를 불러오는 중 오류가 발생했습니다: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -37,19 +45,33 @@ export default function AdminCoupangPage() {
       });
       setForm({ url: "", label: "", type: "regular", expiresAt: "" });
       await load();
-    } catch { setError("저장 중 오류가 발생했어요."); }
-    finally { setBusy(false); }
+    } catch (err) {
+      console.error("[handleAdd Error]", err);
+      setError("저장 중 오류가 발생했어요: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const toggleActive = async (link: CoupangLink) => {
-    await updateCoupangLink(link.id, { active: !link.active });
-    await load();
+    try {
+      await updateCoupangLink(link.id, { active: !link.active });
+      await load();
+    } catch (err) {
+      console.error("[toggleActive Error]", err);
+      alert("상태 변경 실패: " + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("삭제할까요?")) return;
-    await deleteCoupangLink(id);
-    await load();
+    if (!confirm("정말 이 쿠팡 링크를 삭제할까요?")) return;
+    try {
+      await deleteCoupangLink(id);
+      await load();
+    } catch (err) {
+      console.error("[handleDelete Error]", err);
+      alert("삭제 실패: " + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const regular = links.filter(l => l.type === "regular");
@@ -58,16 +80,16 @@ export default function AdminCoupangPage() {
   const inputCls = "border border-[#E8E0D0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#1B4332]";
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-black text-[#1B4332]">쿠팡 파트너스 관리</h1>
-        <p className="text-sm text-[#9A9A9A] mt-1">링크 추가/삭제/활성화 관리</p>
+        <h1 className="text-2xl font-black text-[#1B4332]">🛒 쿠팡 파트너스 관리 및 실시간 광고 전시</h1>
+        <p className="text-sm text-[#9A9A9A] mt-1">앱 메인 및 웹사이트에 전시될 쿠팡 광고 링크를 등록하고 관리합니다.</p>
       </div>
 
-      {/* 추가 폼 */}
+      {/* 링크 추가 폼 */}
       <div className="bg-white rounded-xl border border-[#E8E0D0] p-5 shadow-sm space-y-3">
         <h2 className="font-bold text-[#1B4332]">링크 추가</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-[#4A4A4A] block mb-1">URL</label>
             <input value={form.url} onChange={e => setForm(p => ({...p, url: e.target.value}))}
@@ -79,7 +101,7 @@ export default function AdminCoupangPage() {
               placeholder="예: 이름표 목걸이" className={`w-full ${inputCls}`} />
           </div>
         </div>
-        <div className="flex gap-3 items-end">
+        <div className="flex gap-3 items-end flex-wrap">
           <div>
             <label className="text-xs font-medium text-[#4A4A4A] block mb-1">유형</label>
             <select value={form.type} onChange={e => setForm(p => ({...p, type: e.target.value as "regular"|"event"}))}
@@ -104,7 +126,27 @@ export default function AdminCoupangPage() {
         {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
       </div>
 
-      {/* 상시 링크 */}
+      {/* 광고 실시간 미리보기 (Live Preview) */}
+      <div className="bg-[#FFFDF7] rounded-xl border border-[#E8E0D0] p-5 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-[#1B4332] flex items-center gap-1.5">
+            <span>👁️</span> 쿠팡 광고 전시 실시간 미리보기
+          </h2>
+          <span className="text-xs text-[#9A9A9A]">앱 화면 사용자 시점</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          <div className="bg-white p-3 rounded-lg border border-[#E8E0D0]">
+            <p className="text-xs font-bold text-[#1B4332] mb-2">1. 쿠팡 검색 위젯</p>
+            <CoupangSearchWidget />
+          </div>
+          <div className="bg-white p-3 rounded-lg border border-[#E8E0D0]">
+            <p className="text-xs font-bold text-[#1B4332] mb-2">2. 랜덤 쿠팡 배너</p>
+            <CoupangBanner />
+          </div>
+        </div>
+      </div>
+
+      {/* 상시 링크 목록 */}
       <div className="bg-white rounded-xl border border-[#E8E0D0] shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-[#E8E0D0] bg-[#F9F9F9]">
           <h2 className="font-bold text-[#1B4332]">상시 링크 ({regular.length}개)</h2>
@@ -112,6 +154,8 @@ export default function AdminCoupangPage() {
         <div className="divide-y divide-[#F0F0F0]">
           {loading ? (
             <div className="p-4 text-center text-[#9A9A9A] text-sm">불러오는 중...</div>
+          ) : regular.length === 0 ? (
+            <div className="p-4 text-center text-[#9A9A9A] text-sm">등록된 상시 링크가 없습니다. 위 폼에서 추가해 주세요.</div>
           ) : regular.map(link => (
             <div key={link.id} className="flex items-center gap-3 px-5 py-3">
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${link.active ? "bg-green-500" : "bg-gray-300"}`} />
@@ -132,7 +176,7 @@ export default function AdminCoupangPage() {
         </div>
       </div>
 
-      {/* 이벤트 링크 */}
+      {/* 이벤트 링크 목록 */}
       <div className="bg-white rounded-xl border border-[#E8E0D0] shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-[#E8E0D0] bg-[#FFF8E1]">
           <h2 className="font-bold text-[#F9A825]">이벤트 링크 ({events.length}개)</h2>
@@ -141,6 +185,8 @@ export default function AdminCoupangPage() {
         <div className="divide-y divide-[#F0F0F0]">
           {loading ? (
             <div className="p-4 text-center text-[#9A9A9A] text-sm">불러오는 중...</div>
+          ) : events.length === 0 ? (
+            <div className="p-4 text-center text-[#9A9A9A] text-sm">등록된 이벤트 링크가 없습니다.</div>
           ) : events.map(link => {
             const expired = link.expiresAt ? new Date(link.expiresAt) < new Date() : false;
             return (
