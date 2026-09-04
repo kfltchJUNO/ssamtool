@@ -106,9 +106,6 @@ interface QuizQuestion {
   explanation: string;
 }
 
-interface ParsedQuiz {
-  questions: QuizQuestion[];
-}
 
 async function generateWithRetry(prompt: string): Promise<string> {
   const errors: string[] = [];
@@ -210,7 +207,7 @@ export async function POST(req: NextRequest) {
 
     const raw = await generateWithRetry(prompt);
 
-    let parsed: any;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
@@ -220,9 +217,9 @@ export async function POST(req: NextRequest) {
     }
 
     const questions: QuizQuestion[] = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.questions)
-      ? parsed.questions
+      ? (parsed as QuizQuestion[])
+      : parsed && typeof parsed === "object" && "questions" in parsed && Array.isArray((parsed as { questions: unknown[] }).questions)
+      ? ((parsed as { questions: QuizQuestion[] }).questions)
       : [];
 
     if (questions.length === 0) {
