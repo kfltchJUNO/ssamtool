@@ -95,7 +95,6 @@ export default function RacingGame({
     }));
 
     racersRef.current = racers;
-    setFinishedRanks(null);
   }, [activeCandidates, numRacers]);
 
   // ─── 단일 프레임 렌더링 ─────────────────────────────────────────────
@@ -225,7 +224,7 @@ export default function RacingGame({
       ctx.fillText(racer.avatar, racerX, centerY);
 
       // 주자 머리 위 미니 이름 태그 (달릴 때 같이 이동!)
-      if (laneH >= 46) {
+      if (laneH >= 44) {
         ctx.fillStyle = "#CBD5E1";
         ctx.font = "bold 9px sans-serif";
         ctx.textAlign = "center";
@@ -233,7 +232,7 @@ export default function RacingGame({
         ctx.fillText(racer.name, racerX, centerY - radius - 2);
       }
 
-      // 4-5. [도착 결과] 1~3위 왕관 및 순위 뱃지
+      // 4-5. [도착 결과] 1위 왕관 및 순위 뱃지
       if (globalT >= 0.98) {
         const isWinner = racer.targetRank === 1;
         const isPodium = racer.targetRank <= 3;
@@ -244,15 +243,24 @@ export default function RacingGame({
           `${racer.targetRank}위`;
 
         ctx.fillStyle = isWinner ? "#FCD34D" : isPodium ? "#E2E8F0" : "#94A3B8";
-        ctx.font = "bold 11px sans-serif";
+        ctx.font = isWinner ? "bold 13px sans-serif" : "bold 11px sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(rankText, trackEndX + 16, centerY);
+        ctx.fillText(rankText, trackEndX + 14, centerY);
 
         if (isWinner) {
-          ctx.font = "16px sans-serif";
+          // 1위 주자 위에 빛나는 큰 왕관 + 말풍선
+          ctx.font = "24px sans-serif";
           ctx.textAlign = "center";
-          ctx.fillText("👑", racerX, centerY - radius - 6);
+          ctx.textBaseline = "bottom";
+          ctx.fillText("👑", racerX, centerY - radius - 4);
+
+          // 1위 주자 황금 오라
+          ctx.beginPath();
+          ctx.arc(racerX, centerY, radius + 7, 0, Math.PI * 2);
+          ctx.strokeStyle = "#FCD34D";
+          ctx.lineWidth = 3;
+          ctx.stroke();
         }
       }
     });
@@ -282,13 +290,17 @@ export default function RacingGame({
     if (ctx) {
       ctx.scale(dpr, dpr);
     }
-    drawFrame(racersRef.current, 0);
-  }, [logicalHeight, drawFrame]);
+    drawFrame(racersRef.current, finishedRanks ? 1 : 0);
+  }, [logicalHeight, drawFrame, finishedRanks]);
 
   // 마운트 및 참가자 변경 시 주자/캔버스 세팅
+  // (단, 레이싱 진행 중이거나 당첨자 확인 대기 중일 때는 리셋하지 않음)
   useEffect(() => {
-    initRacers();
-  }, [initRacers]);
+    if (!racing && !finishedRanks) {
+      initRacers();
+      setupCanvas();
+    }
+  }, [initRacers, setupCanvas, racing, finishedRanks]);
 
   useEffect(() => {
     setupCanvas();
@@ -354,7 +366,7 @@ export default function RacingGame({
       if (t < 1) {
         animRef.current = requestAnimationFrame(animate);
       } else {
-        // 완주!
+        // 완주! 결과 상태로 고정 (사용자가 확인 누를 때까지 유지!)
         setRacing(false);
         playFanfare(soundEnabled, 0.7);
 
@@ -363,7 +375,7 @@ export default function RacingGame({
           .map(r => r.name);
 
         setFinishedRanks(ranked);
-        onFinish(ranked.slice(0, pickCount));
+        // onFinish는 여기서 바로 부르지 않고 사용자가 확인 버튼을 누를 때 호출!
       }
     };
 
@@ -394,8 +406,33 @@ export default function RacingGame({
     setRacing(false);
     playFanfare(soundEnabled, 0.7);
     setFinishedRanks(ranked);
-    onFinish(ranked.slice(0, pickCount));
+    // onFinish는 여기서 바로 부르지 않고 사용자가 확인 버튼을 누를 때 호출!
   };
+
+  // ─── 사용자가 '확인 (다음 레이싱 진행)' 클릭 시 ─────────────────────
+  const handleConfirmNextRace = () => {
+    if (!finishedRanks) return;
+    const winners = finishedRanks.slice(0, pickCount);
+    // 1. 부모에게 당첨자 전달 (picked 목록에 추가되어 pool에서 제외됨)
+    onFinish(winners);
+    // 2. 완주 상태 해제 -> useEffect에 의해 다음 레이싱 준비
+    setFinishedRanks(null);
+  };
+
+  // ─── '다시 달리기 (동일 멤버)' ──────────────────────────────────────
+  const handleRerun = () => {
+    setFinishedRanks(null);
+    startRace();
+  };
+
+  // 당첨자 목록
+  const winners = useMemo(() => {
+    if (!finishedRanks) return [];
+    return finishedRanks.slice(0, pickCount);
+  }, [finishedRanks, pickCount]);
+
+  const topWinner = winners[0];
+  const topRacer = racersRef.current.find(r => r.name === topWinner);
 
   return (
     <div className="space-y-4">
@@ -415,7 +452,7 @@ export default function RacingGame({
       {/* 캔버스 트랙 래퍼 */}
       <div
         ref={containerRef}
-        className="rounded-2xl overflow-hidden border-4 border-slate-700 shadow-2xl bg-[#0F172A]"
+        className="rounded-2xl overflow-hidden border-4 border-slate-700 shadow-2xl bg-[#0F172A] relative"
       >
         <canvas
           ref={canvasRef}
@@ -425,52 +462,88 @@ export default function RacingGame({
             display: "block",
           }}
         />
-      </div>
 
-      {/* 조작 버튼 */}
-      <div className="flex gap-3 justify-center items-center pt-1">
-        <button
-          onClick={startRace}
-          disabled={racing || numRacers === 0}
-          className="px-8 py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 text-white font-black text-lg rounded-2xl hover:brightness-110 disabled:opacity-40 shadow-xl transition-transform active:scale-95 flex items-center gap-2"
-        >
-          {racing ? (
-            <>
-              <span className="animate-spin">🏎️</span> 질주하는 중...!
-            </>
-          ) : (
-            <>🏎️ 레이싱 출발!</>
-          )}
-        </button>
-
-        {racing && (
-          <button
-            onClick={skipRace}
-            className="px-4 py-3.5 bg-slate-200 text-slate-700 text-sm font-bold rounded-2xl hover:bg-slate-300 transition-colors"
-          >
-            ⏩ 스킵
-          </button>
-        )}
-
-        {!racing && finishedRanks && (
-          <button
-            onClick={() => {
-              initRacers();
-              setupCanvas();
-            }}
-            className="px-4 py-3.5 bg-white border-2 border-slate-300 text-slate-700 text-sm font-bold rounded-2xl hover:border-slate-500 shadow-sm transition-colors"
-          >
-            ↺ 재추첨
-          </button>
+        {/* 👑 완주 시 캔버스 상단 플로팅 축하 뱃지 */}
+        {finishedRanks && topWinner && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-amber-400 text-slate-950 font-black px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-2 border-2 border-white animate-bounce">
+            <span className="text-lg">👑</span>
+            <span className="text-sm tracking-wide">
+              1위 당첨: {topWinner} {topRacer?.avatar}
+            </span>
+          </div>
         )}
       </div>
 
-      {/* 완주 순위 결과 카드 */}
+      {/* ── 👑 당첨 결과 및 다음 레이싱 진행 카드 (완주 후 항상 유지!) ── */}
       {finishedRanks && (
-        <div className="bg-white rounded-2xl border-2 border-amber-500 p-5 shadow-xl space-y-3">
+        <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 text-white rounded-3xl p-6 shadow-2xl space-y-4 animate-[fadeInUp_0.25s_ease]">
+          <div className="text-center space-y-1.5">
+            <div className="text-4xl animate-bounce">👑</div>
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight drop-shadow-md">
+              축하합니다! 1위 당첨: {topWinner}
+            </h2>
+            {pickCount > 1 && (
+              <p className="text-sm font-bold text-amber-100">
+                선발된 당첨자 ({pickCount}명): <b className="text-white underline">{winners.join(", ")}</b>
+              </p>
+            )}
+            <p className="text-xs text-amber-200">
+              확인을 누르면 당첨된 학생이 제외되고 다음 레이싱을 준비합니다.
+            </p>
+          </div>
+
+          {/* 주요 조작 버튼: 확인(다음 레이싱) + 다시 달리기 */}
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              onClick={handleConfirmNextRace}
+              className="flex-1 py-4 bg-white text-[#1B4332] font-black text-lg rounded-2xl shadow-xl hover:bg-amber-50 transition-transform active:scale-95 flex items-center justify-center gap-2"
+            >
+              <span>✅ 확인 (다음 레이싱 진행)</span>
+            </button>
+            <button
+              onClick={handleRerun}
+              className="px-6 py-4 bg-black/25 hover:bg-black/35 text-white font-bold text-sm rounded-2xl border border-white/30 transition-colors"
+            >
+              ↺ 이번 레이싱 다시 달리기
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 기본 출발 / 스킵 조작 버튼 (레이싱 전 or 레이싱 중) */}
+      {!finishedRanks && (
+        <div className="flex gap-3 justify-center items-center pt-1">
+          <button
+            onClick={startRace}
+            disabled={racing || numRacers === 0}
+            className="px-8 py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 text-white font-black text-lg rounded-2xl hover:brightness-110 disabled:opacity-40 shadow-xl transition-transform active:scale-95 flex items-center gap-2"
+          >
+            {racing ? (
+              <>
+                <span className="animate-spin">🏎️</span> 질주하는 중...!
+              </>
+            ) : (
+              <>🏎️ 레이싱 출발!</>
+            )}
+          </button>
+
+          {racing && (
+            <button
+              onClick={skipRace}
+              className="px-4 py-3.5 bg-slate-200 text-slate-700 text-sm font-bold rounded-2xl hover:bg-slate-300 transition-colors"
+            >
+              ⏩ 스킵
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 완주 전체 순위표 (완주 후 아래에 상세 표시) */}
+      {finishedRanks && (
+        <div className="bg-white rounded-2xl border-2 border-amber-400 p-5 shadow-lg space-y-3">
           <div className="flex items-center justify-between border-b pb-2.5">
             <h3 className="font-black text-[#1B4332] text-base flex items-center gap-1.5">
-              🏆 레이싱 완주 순위
+              🏆 전체 완주 순위
             </h3>
             <span className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-300 px-2.5 py-1 rounded-lg">
               상위 {pickCount}명 당첨
