@@ -2,7 +2,7 @@ import {
   collection, doc, getDocs, addDoc, updateDoc,
   deleteDoc, serverTimestamp, query, orderBy, getDoc, setDoc,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 
 // ── 데이터 모델 타입 ──────────────────────────────────────────────
 export interface Student {
@@ -58,187 +58,174 @@ export interface AssignOptions {
 export interface AssignResult {
   assignments: Map<string, string>; // deskId -> studentId
   unassigned: Student[];
-  emptyDesks: ClassElement[];
-  violationsCount: number;
-  violationDetails: string[];
+  emptyDesks: Desk[];
+  violationsCount?: number;
+  violationDetails?: string[];
 }
 
-export interface StudentMemo {
-  studentName: string;
-  pronunciation?: string;
-  grammar?: string;
-  attitude?: string;
-  memo?: string;
-  values?: Record<string, string>;
+export interface MemoItem {
+  pronunciation?: boolean; // 발음
+  grammar?: boolean;       // 문법
+  attitude?: boolean;      // 태도
+  note?: string;           // 자유 메모
 }
 
 export interface MemoSheet {
-  id: string;
-  groupId: string;
-  groupName: string;
+  id: string;             // classId / groupId
+  seatingChartId?: string;
+  groupId?: string;
+  groupName?: string;
   fields?: string[];
-  memos: StudentMemo[];
+  memos: Record<string, MemoItem> | unknown;
   updatedAt?: unknown;
 }
 
-// ── Helper: Fisher–Yates Shuffle ──────────────────────────────────
-export function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
+// ── 헬퍼: Fisher-Yates 순수 함수 셔플 ──────────────────────────────
+export function shuffleArray<T>(arr: T[]): T[] {
+  const res = [...arr];
+  for (let i = res.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+    [res[i], res[j]] = [res[j], res[i]];
   }
-  return a;
+  return res;
 }
 
-// ── Pure Function: 자리 배정 핵심 알고리즘 (Task 1 & Task 2) ──────────
+// ── 핵심 자리 배치 순수 함수 (Task 1 & Task 2 제약사항 반영) ─────
 export function assignSeats(
   students: Student[],
-  elements: ClassElement[],
-  options?: AssignOptions
+  desks: Desk[],
+  options: AssignOptions = {}
 ): AssignResult {
-  const desks = elements.filter(e => e.type === "desk");
-  const sortedDesks = [...desks].sort((a, b) => a.y !== b.y ? a.y - b.y : a.x - b.x);
+  const totalStudents = students.length;
+  const deskCount = desks.length;
 
-  if (students.length === 0 || sortedDesks.length === 0) {
+  if (deskCount === 0) {
     return {
       assignments: new Map(),
       unassigned: [...students],
-      emptyDesks: [...sortedDesks],
-      violationsCount: 0,
-      violationDetails: [],
+      emptyDesks: [],
     };
   }
 
-  const { avoidPrevious, separateSameTags, separatedPairs } = options || {};
-  const hasConstraints = !!(avoidPrevious?.length || separateSameTags || separatedPairs?.length);
+  // 반복 시도 (제약조건 위반 최소화 스코어링)
+  const MAX_TRIALS = 50;
+  let bestAssignments = new Map<string, string>();
+  let bestScore = Infinity;
+  let bestUnassigned: Student[] = [];
+  let bestEmptyDesks: Desk[] = [];
 
-  // 제약 조건 점수 평가 함수 (소비 점수가 낮을수록 우수)
-  const evaluateAssignments = (candidateAssignments: Map<string, string>): { score: number; details: string[] } => {
-    let score = 0;
-    const details: string[] = [];
+  const avoidMap = new Map<string, string>(); // studentId -> previousDeskId
+  if (options.avoidPrevious) {
+    options.avoidPrevious.forEach(a => avoidMap.set(a.studentId, a.deskId));
+  }
 
-    // deskId -> ClassElement Map
-    const deskMap = new Map<string, ClassElement>();
-    sortedDesks.forEach(d => deskMap.set(d.id, d));
+  const separatedPairs = options.separatedPairs || [];
 
-    // studentId -> deskId Map
-    const studentDeskMap = new Map<string, ClassElement>();
-    candidateAssignments.forEach((sId, dId) => {
-      const d = deskMap.get(dId);
-      if (d) studentDeskMap.set(sId, d);
-    });
+  for (let trial = 0; trial < MAX_TRIALS; trial++) {
+    const shuffledStudents = shuffleArray(students);
+    const shuffledDesks = shuffleArray(desks);
 
-    // 1. 직전 배치 동일 자리 회피 검사
-    if (avoidPrevious && avoidPrevious.length > 0) {
-      avoidPrevious.forEach(prev => {
-        const currentDeskId = candidateAssignments.get(prev.deskId);
-        if (currentDeskId === prev.studentId) {
-          score += 10;
-          const st = students.find(s => s.id === prev.studentId);
-          if (st) details.push(`'${st.name}' 학생이 지난번과 동일한 자리에 배정됨`);
+    const assignableCount = Math.min(shuffledStudents.length, shuffledDesks.length);
+    const currentAssignments = new Map<string, string>();
+
+    for (let i = 0; i < assignableCount; i++) {
+      currentAssignments.set(shuffledDesks[i].id, shuffledStudents[i].id);
+    }
+
+    const unassigned = shuffledStudents.slice(assignableCount);
+    const emptyDesks = shuffledDesks.slice(assignableCount);
+
+    let penalty = 0;
+
+    // 제약 1: 직전 자리 동일 배정 회피
+    if (options.avoidPrevious) {
+      currentAssignments.forEach((stId, dId) => {
+        if (avoidMap.get(stId) === dId) {
+          penalty += 10;
         }
       });
     }
 
-    // 2. 분리 지정 쌍(상하좌우 인접 금지) 검사
-    if (separatedPairs && separatedPairs.length > 0) {
-      separatedPairs.forEach(([sId1, sId2]) => {
-        const d1 = studentDeskMap.get(sId1);
-        const d2 = studentDeskMap.get(sId2);
+    // 제약 2: 특정 학생 쌍 분리 (상하좌우 인접 판단)
+    if (separatedPairs.length > 0) {
+      const studentDeskMap = new Map<string, Desk>();
+      desks.forEach(d => {
+        const stId = currentAssignments.get(d.id);
+        if (stId) studentDeskMap.set(stId, d);
+      });
+
+      for (const [st1, st2] of separatedPairs) {
+        const d1 = studentDeskMap.get(st1);
+        const d2 = studentDeskMap.get(st2);
         if (d1 && d2) {
-          const isAdjacent = Math.abs(d1.x - d2.x) + Math.abs(d1.y - d2.y) === 1;
-          if (isAdjacent) {
-            score += 20;
-            const st1 = students.find(s => s.id === sId1);
-            const st2 = students.find(s => s.id === sId2);
-            if (st1 && st2) details.push(`'${st1.name}'와(과) '${st2.name}' 학생이 서로 이웃함`);
-          }
+          const dist = Math.abs(d1.x - d2.x) + Math.abs(d1.y - d2.y);
+          if (dist <= 1) penalty += 20; // 상하좌우 붙어있으면 감점
         }
-      });
+      }
     }
 
-    // 3. 동일 태그 분산(상하좌우 인접 금지) 검사
-    if (separateSameTags) {
-      candidateAssignments.forEach((sId1, dId1) => {
-        const st1 = students.find(s => s.id === sId1);
+    // 제약 3: 동일 태그 인접 분산
+    if (options.separateSameTags) {
+      const studentMap = new Map(students.map(s => [s.id, s]));
+      const deskMap = new Map(desks.map(d => [d.id, d]));
+
+      currentAssignments.forEach((stId1, dId1) => {
+        const st1 = studentMap.get(stId1);
         const d1 = deskMap.get(dId1);
-        if (!st1 || !st1.tag || !d1) return;
+        if (!st1?.tag || !d1) return;
 
-        candidateAssignments.forEach((sId2, dId2) => {
-          if (sId1 >= sId2) return; // 중복 비교 방지
-          const st2 = students.find(s => s.id === sId2);
+        currentAssignments.forEach((stId2, dId2) => {
+          if (dId1 >= dId2) return;
+          const st2 = studentMap.get(stId2);
           const d2 = deskMap.get(dId2);
-          if (!st2 || st2.tag !== st1.tag || !d2) return;
+          if (!st2?.tag || !d2) return;
 
-          const isAdjacent = Math.abs(d1.x - d2.x) + Math.abs(d1.y - d2.y) === 1;
-          if (isAdjacent) {
-            score += 5;
-            details.push(`동일 태그(${st1.tag}) 학생 '${st1.name}'와(과) '${st2.name}'이(가) 인접함`);
+          if (st1.tag === st2.tag) {
+            const dist = Math.abs(d1.x - d2.x) + Math.abs(d1.y - d2.y);
+            if (dist <= 1) penalty += 5;
           }
         });
       });
     }
 
-    return { score, details };
-  };
-
-  let bestAssignments = new Map<string, string>();
-  let bestScore = Infinity;
-  let bestDetails: string[] = [];
-
-  const maxAttempts = hasConstraints ? 100 : 1;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const shuffledStudents = shuffle(students);
-    const candidate = new Map<string, string>();
-
-    const assignCount = Math.min(shuffledStudents.length, sortedDesks.length);
-    for (let i = 0; i < assignCount; i++) {
-      candidate.set(sortedDesks[i].id, shuffledStudents[i].id);
-    }
-
-    if (!hasConstraints) {
-      bestAssignments = candidate;
-      bestScore = 0;
-      bestDetails = [];
-      break;
-    }
-
-    const { score, details } = evaluateAssignments(candidate);
-    if (score < bestScore) {
-      bestScore = score;
-      bestAssignments = candidate;
-      bestDetails = details;
-      if (score === 0) break; // 완벽한 해 달성 시 즉시 멈춤
+    if (penalty < bestScore) {
+      bestScore = penalty;
+      bestAssignments = currentAssignments;
+      bestUnassigned = unassigned;
+      bestEmptyDesks = emptyDesks;
+      if (penalty === 0) break;
     }
   }
 
-  // 결과 수집
-  const assignedStudentIds = new Set(bestAssignments.values());
-  const assignedDeskIds = new Set(bestAssignments.keys());
-
-  const unassigned = students.filter(s => !assignedStudentIds.has(s.id));
-  const emptyDesks = sortedDesks.filter(d => !assignedDeskIds.has(d.id));
-
-  // ★ Task 1 자체 검증 (Self-Validation Assert)
-  const totalProcessed = bestAssignments.size + unassigned.length;
-  if (totalProcessed !== students.length) {
+  // 자체 검증 (배정된 학생 수 + 미배정 학생 수 = 전체 학생 수)
+  const totalCheck = bestAssignments.size + bestUnassigned.length;
+  if (totalCheck !== totalStudents) {
     console.error(
-      `[assignSeats Validation Failure] 배정 수(${bestAssignments.size}) + 미배정 수(${unassigned.length}) != 전체 학생 수(${students.length})`
+      `[seating validation error] 전체 학생(${totalStudents}) != 배정(${bestAssignments.size}) + 미배정(${bestUnassigned.length})`
     );
   }
 
   return {
     assignments: bestAssignments,
-    unassigned,
-    emptyDesks,
-    violationsCount: bestScore,
-    violationDetails: bestDetails,
+    unassigned: bestUnassigned,
+    emptyDesks: bestEmptyDesks,
+    violationsCount: bestScore === Infinity ? 0 : bestScore,
+    violationDetails: [],
   };
 }
 
-// ── 경로 정의 ─────────────────────────────────────────────────────
+// ── 인증 헤더 헬퍼 ────────────────────────────────────────────────
+async function getAuthHeader(): Promise<HeadersInit> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return { "Content-Type": "application/json" };
+  const token = await currentUser.getIdToken();
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+// ── 경로 정의 (Client SDK Fallback 용) ────────────────────────────
 const layoutCol = (uid: string) => collection(db, "seatingLayouts", uid, "layouts");
 const layoutDoc = (uid: string, lid: string) => doc(db, "seatingLayouts", uid, "layouts", lid);
 const chartCol = (uid: string) => collection(db, "seatingCharts", uid, "charts");
@@ -247,6 +234,17 @@ const memoDoc = (uid: string, groupId: string) => doc(db, "studentMemos", uid, "
 
 // ── 레이아웃 (교실 구조) CRUD ─────────────────────────────────────
 export async function getLayouts(uid: string): Promise<SeatingLayout[]> {
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch("/api/seating/layout", { method: "GET", headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.layouts)) return data.layouts;
+    }
+  } catch (err) {
+    console.warn("[getLayouts API Fallback]", err);
+  }
+
   let docs;
   try {
     const snap = await getDocs(query(layoutCol(uid), orderBy("createdAt", "asc")));
@@ -257,7 +255,6 @@ export async function getLayouts(uid: string): Promise<SeatingLayout[]> {
   }
   return docs.map(d => {
     const data = d.data();
-    // 마이그레이션: 기존 desks에 studentName이 들어가 있던 데이터를 교실 기물 요소로 정리
     const elements: ClassElement[] = Array.isArray(data.elements)
       ? data.elements
       : Array.isArray(data.desks)
@@ -287,6 +284,27 @@ export async function saveLayout(
   layout: Omit<SeatingLayout, "id" | "createdAt" | "updatedAt">
 ): Promise<string> {
   const cleanData = JSON.parse(JSON.stringify(layout));
+
+  // Server API 우선 호출 (Admin SDK 기반이라 Firestore Security Rules 제약 제로)
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch("/api/seating/layout", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(cleanData),
+    });
+    const data = await res.json();
+    if (res.ok && data.id) {
+      return data.id;
+    }
+    if (!res.ok) {
+      throw new Error(data.error || "서버 API 저장 실패");
+    }
+  } catch (err) {
+    console.warn("[saveLayout API Fallback]", err);
+  }
+
+  // Client SDK Fallback
   const ref = await addDoc(layoutCol(uid), {
     ...cleanData,
     createdAt: serverTimestamp(),
@@ -297,15 +315,51 @@ export async function saveLayout(
 
 export async function updateLayout(uid: string, lid: string, layout: Partial<SeatingLayout>) {
   const cleanData = JSON.parse(JSON.stringify(layout));
+
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch("/api/seating/layout", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ id: lid, ...cleanData }),
+    });
+    if (res.ok) return;
+  } catch (err) {
+    console.warn("[updateLayout API Fallback]", err);
+  }
+
   await updateDoc(layoutDoc(uid, lid), { ...cleanData, updatedAt: serverTimestamp() });
 }
 
 export async function deleteLayout(uid: string, lid: string) {
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch(`/api/seating/layout?id=${lid}`, {
+      method: "DELETE",
+      headers,
+    });
+    if (res.ok) return;
+  } catch (err) {
+    console.warn("[deleteLayout API Fallback]", err);
+  }
+
   await deleteDoc(layoutDoc(uid, lid));
 }
 
 // ── 시점별 배치 결과 (SeatingChart) CRUD ─────────────────────────
 export async function getSeatingCharts(uid: string, layoutId?: string): Promise<SeatingChart[]> {
+  try {
+    const headers = await getAuthHeader();
+    const url = layoutId ? `/api/seating/chart?layoutId=${layoutId}` : "/api/seating/chart";
+    const res = await fetch(url, { method: "GET", headers });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.charts)) return data.charts;
+    }
+  } catch (err) {
+    console.warn("[getSeatingCharts API Fallback]", err);
+  }
+
   let docs;
   try {
     const snap = await getDocs(query(chartCol(uid), orderBy("createdAt", "desc")));
@@ -326,6 +380,22 @@ export async function saveSeatingChart(
   chart: Omit<SeatingChart, "id" | "createdAt">
 ): Promise<string> {
   const cleanData = JSON.parse(JSON.stringify(chart));
+
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch("/api/seating/chart", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(cleanData),
+    });
+    const data = await res.json();
+    if (res.ok && data.id) {
+      return data.id;
+    }
+  } catch (err) {
+    console.warn("[saveSeatingChart API Fallback]", err);
+  }
+
   const ref = await addDoc(chartCol(uid), {
     ...cleanData,
     createdAt: serverTimestamp(),
@@ -334,6 +404,17 @@ export async function saveSeatingChart(
 }
 
 export async function deleteSeatingChart(uid: string, cid: string) {
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch(`/api/seating/chart?id=${cid}`, {
+      method: "DELETE",
+      headers,
+    });
+    if (res.ok) return;
+  } catch (err) {
+    console.warn("[deleteSeatingChart API Fallback]", err);
+  }
+
   await deleteDoc(chartDoc(uid, cid));
 }
 
@@ -344,5 +425,6 @@ export async function getMemo(uid: string, groupId: string): Promise<MemoSheet |
 }
 
 export async function saveMemo(uid: string, groupId: string, data: Omit<MemoSheet, "id">) {
-  await setDoc(memoDoc(uid, groupId), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+  const cleanData = JSON.parse(JSON.stringify(data));
+  await setDoc(memoDoc(uid, groupId), { ...cleanData, updatedAt: serverTimestamp() }, { merge: true });
 }

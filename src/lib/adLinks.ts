@@ -2,7 +2,7 @@ import {
   collection, doc, getDocs, addDoc, updateDoc,
   deleteDoc, serverTimestamp, query, orderBy,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 
 export interface CoupangLink {
   id:        string;
@@ -14,9 +14,30 @@ export interface CoupangLink {
   createdAt?: unknown;
 }
 
+async function getAuthHeader(): Promise<HeadersInit> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return { "Content-Type": "application/json" };
+  const token = await currentUser.getIdToken();
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 const COL = collection(db, "adLinks", "coupang", "links");
 
 export async function getCoupangLinks(): Promise<CoupangLink[]> {
+  try {
+    const res = await fetch("/api/admin/coupang", { method: "GET" });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.links)) return data.links;
+    }
+  } catch (err) {
+    console.warn("[getCoupangLinks API Fallback]", err);
+  }
+
+  // Client SDK Fallback
   try {
     const snap = await getDocs(query(COL, orderBy("createdAt", "asc")));
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as CoupangLink));
@@ -28,14 +49,55 @@ export async function getCoupangLinks(): Promise<CoupangLink[]> {
 }
 
 export async function addCoupangLink(data: Omit<CoupangLink, "id" | "createdAt">) {
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch("/api/admin/coupang", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (res.ok && result.id) {
+      return result.id;
+    }
+    if (!res.ok) {
+      throw new Error(result.error || result.details || "쿠팡 링크 저장 실패");
+    }
+  } catch (err) {
+    console.warn("[addCoupangLink API Fallback]", err);
+  }
+
   return addDoc(COL, { ...data, createdAt: serverTimestamp() });
 }
 
 export async function updateCoupangLink(id: string, data: Partial<CoupangLink>) {
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch("/api/admin/coupang", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ id, ...data }),
+    });
+    if (res.ok) return;
+  } catch (err) {
+    console.warn("[updateCoupangLink API Fallback]", err);
+  }
+
   return updateDoc(doc(db, "adLinks", "coupang", "links", id), data);
 }
 
 export async function deleteCoupangLink(id: string) {
+  try {
+    const headers = await getAuthHeader();
+    const res = await fetch(`/api/admin/coupang?id=${id}`, {
+      method: "DELETE",
+      headers,
+    });
+    if (res.ok) return;
+  } catch (err) {
+    console.warn("[deleteCoupangLink API Fallback]", err);
+  }
+
   return deleteDoc(doc(db, "adLinks", "coupang", "links", id));
 }
 

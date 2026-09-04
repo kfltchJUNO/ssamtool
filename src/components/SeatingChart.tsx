@@ -645,10 +645,10 @@ export default function SeatingChart({
         )}
 
         {/* 제약 위반 안내 (있을 때만) */}
-        {assignResult && assignResult.violationDetails.length > 0 && (
+        {assignResult && (assignResult.violationDetails?.length ?? 0) > 0 && (
           <div className="mb-4 p-3 bg-[#FFFBEB] border border-[#FCD34D] rounded-xl text-xs text-[#92400E]">
             <span className="font-bold">ℹ️ 배치 제약 안내: </span>
-            {assignResult.violationDetails.join(" · ")}
+            {assignResult.violationDetails?.join(" · ")}
           </div>
         )}
 
