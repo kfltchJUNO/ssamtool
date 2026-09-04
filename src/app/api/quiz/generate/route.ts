@@ -22,14 +22,14 @@ const MODELS = [
 ];
 
 function calcChalkCost(count: number) {
-  // 5문항 이하: 1개, 10문항 이하: 2개, 20문항: 4개
+  // 5문항 이하: 1개, 10문항 이하: 2개, 15문항 이하: 3개, 20문항: 4개
   if (count <= 5)  return 1;
   if (count <= 10) return 2;
   if (count <= 15) return 3;
   return 4;
 }
 
-// 🆕 자유 주제 입력 방식 프롬프트
+// ── 빠른 생성(자유 주제) 프롬프트 ──────────────────────────────────
 function buildTopicPrompt({
   topic,
   difficulty,
@@ -48,7 +48,7 @@ function buildTopicPrompt({
 
   const typeGuide = questionTypes?.length
     ? `문항 유형은 ${questionTypes.join(", ")}을 포함해 출제하세요.`
-    : "문항 유형은 빈칸 채우기(fill-in-blank), 객관식(multiple-choice)을 주로 출제하세요.";
+    : "문항 유형은 빈칸 채우기(fill-in-blank), 4지선다 객관식(multiple-choice)을 골고루 출제하세요.";
 
   return `당신은 한국어 교육 전문가입니다. 아래 주제로 한국어 학습 퀴즈 문항을 생성하세요.
 
@@ -62,32 +62,66 @@ function buildTopicPrompt({
 3. 각 문항에 오답 시 참고할 수 있는 한국어 문법/어휘 해설(explanation)을 포함하세요.
 4. 반드시 아래 JSON 형식으로만 응답하고, 다른 텍스트나 마크다운 코드블록(\`\`\`)을 포함하지 마세요.
 
-{"questions":[{"type":"fill-in-blank","question":"저는 학교___ 공부를 합니다.","choices":null,"answer":"에서","explanation":"'에서'는 동작이 일어나는 장소를 나타냅니다."},{"type":"multiple-choice","question":"다음 중 '좋아하다'의 반대말은?","choices":["1) 싫어하다","2) 먹다","3) 가다","4) 자다"],"answer":"1) 싫어하다","explanation":"'좋아하다'의 반대말은 '싫어하다'입니다."}]}`;
+{"questions":[{"type":"fill-in-blank","question":"저는 학교___ 공부를 합니다.","choices":null,"answer":"에서","explanation":"'에서'는 동작이 일어나는 장소를 나타냅니다."},{"type":"multiple-choice","question":"다음 중 '좋아하다'의 반대말은?","choices":["① 싫어하다","② 먹다","③ 가다","④ 자다"],"answer":"① 싫어하다","explanation":"'좋아하다'의 반대말은 '싫어하다'입니다."}]}`;
 }
 
-// 기존 문법 항목 라이브러리 기반 프롬프트
-function buildGrammarPrompt({
-  grammarPoints,
-  difficulty,
+// ── 📘 미니 TOPIK 실전 모의고사 프롬프트 ──────────────────────────
+function buildMiniTopikPrompt({
+  topikLevel,
+  section,
   count,
 }: {
-  grammarPoints: string[];
-  difficulty: string;
+  topikLevel: "topik1" | "topik2_mid" | "topik2_adv";
+  section: "all" | "reading" | "grammar_vocab";
   count: number;
 }) {
-  return `당신은 한국어 교육 전문가입니다. 다음 조건에 맞는 퀴즈 문항을 생성하세요.
+  let levelDesc = "";
+  let sampleStyle = "";
 
-[학습 문법] ${grammarPoints.join(", ")}
-[난이도] ${difficulty}
-[문항 수] ${count}
+  if (topikLevel === "topik1") {
+    levelDesc = "TOPIK I (1~2급, 초급) 수준. 일상생활에 필요한 기초 어휘, 조사, 기본 문형(-아서/어서, -(으)ㄹ 수 있다, -고 싶다 등), 짧은 안내문/메모/표지판 읽기";
+    sampleStyle = `
+- 유형 A (문법/조사): 다음 (   )에 들어갈 가장 알맞은 것을 고르십시오.
+  보기: 친구(   ) 만납니다. -> ① 를 ② 가 ③ 에 ④ 와
+- 유형 B (어휘 반대말/유의말/관계어): 다음 밑줄 친 부분과 반대되는 뜻을 가진 것을 고르십시오.
+- 유형 C (실용문 읽기): 무엇에 대한 글인지 고르십시오. (시간, 장소, 가격 등)`;
+  } else if (topikLevel === "topik2_mid") {
+    levelDesc = "TOPIK II (3~4급, 중급) 수준. 일상적·사회적 소재의 설명문, 문맥 빈칸 추론, 중심 생각 고르기, 연결 어미(-느라고, -는 바람에, -기 마련이다 등), 관용 표현";
+    sampleStyle = `
+- 유형 A (문법/표현): 다음 (   )에 들어갈 가장 알맞은 것을 고르십시오.
+- 유형 B (문맥 빈칸): 다음 글을 읽고 (   )에 들어갈 내용으로 가장 알맞은 것을 고르십시오.
+- 유형 C (중심 생각): 다음 글을 읽고 중심 생각을 고르십시오.`;
+  } else {
+    levelDesc = "TOPIK II (5~6급, 고급) 수준. 시사, 경제, 과학, 인문, 문화 등 전문적·추상적 제재, 논리적 연결어, 문맥상 의미, 고급 한자어/속담/사자성어";
+    sampleStyle = `
+- 유형 A (고급 어휘/사자성어/속담): 문맥에 맞는 적절한 표현 고르기
+- 유형 B (논설문/설명문 빈칸 추론): 논리적 흐름에 맞는 문장 또는 어구 완성
+- 유형 C (주제 및 논지 파악): 필자의 태도나 주장으로 가장 알맞은 것 고르기`;
+  }
 
-조건:
-1. 문항 유형은 빈칸 채우기(fill-in-blank), 객관식(multiple-choice), 오류 교정(error-correction)을 섞어서 출제
-2. 난이도에 맞게 문장 길이와 어휘 수준을 조절 (초급: 짧고 쉬운 어휘 / 중급: 일상 표현 / 고급: 추상적 주제 가능)
-3. 각 문항마다 오답 시 참고할 수 있는 간단한 문법 해설 포함
-4. 반드시 아래 JSON 형식으로만 응답하고, 다른 텍스트나 마크다운 코드블록 표시는 포함하지 마세요
+  const sectionGuide =
+    section === "reading" ? "영역: [읽기/지문 독해 중심] 지문을 제시하고 내용 파악, 빈칸 채우기 위주"
+    : section === "grammar_vocab" ? "영역: [어휘·문법 중심] 괄호 넣기, 알맞은 표현 고르기, 유의어/반의어 위주"
+    : "영역: [실전 종합] 어휘, 문법, 짧은 지문 독해를 실제 TOPIK 시험처럼 균형 있게 배분";
 
-{"questions":[{"type":"fill-in-blank","question":"저는 학교___ 공부를 합니다.","choices":null,"answer":"에서","explanation":"'에서'는 동작이 일어나는 장소를 나타낼 때 사용합니다."}]}`;
+  return `당신은 한국어능력시험(TOPIK) 출제 위원입니다. 실제 TOPIK 기출문제 형식과 정확히 일치하는 4지선다형 객관식 모의 문항을 출제하세요.
+
+[시험 급수] ${levelDesc}
+[출제 영역] ${sectionGuide}
+[문항 수] ${count}문항
+
+출제 가이드:
+${sampleStyle}
+
+규칙:
+1. 모든 문항은 반드시 4개의 선택지를 가진 4지선다형 객관식("multiple-choice")으로 출제하세요.
+2. 선택지(choices)는 반드시 ["① ...", "② ...", "③ ...", "④ ..."] 형식으로 작성하세요.
+3. answer(정답)는 선택지 문자열과 완전히 일치해야 합니다 (예: "① 학교").
+4. explanation(해설)에는 왜 이것이 정답인지, 오답 선택지는 왜 틀렸는지 학습자가 납득할 수 있는 친절한 한국어 해설을 반드시 포함하세요.
+5. 질문(question)에 지문이 필요한 경우, 지문을 포함하여 명확히 작성하세요. (예: [지문] ... \\n\\n다음 글의 중심 생각으로 알맞은 것을 고르십시오.)
+6. 반드시 아래 JSON 규격으로만 응답하고 마크다운 코드블록(\`\`\`)을 넣지 마세요.
+
+{"questions":[{"type":"multiple-choice","question":"[다음 ( )에 들어갈 가장 알맞은 것을 고르십시오.]\\n어제 도서관(   ) 책을 빌렸습니다.","choices":["① 에","② 에서","③ 에게","④ 으로"],"answer":"② 에서","explanation":"도서관에서 책을 빌리는 동작이 일어나는 장소를 나타내므로 '에서'가 정답입니다."}]}`;
 }
 
 async function getUidFromRequest(req: NextRequest): Promise<string> {
@@ -105,7 +139,6 @@ interface QuizQuestion {
   answer: string;
   explanation: string;
 }
-
 
 async function generateWithRetry(prompt: string): Promise<string> {
   const errors: string[] = [];
@@ -154,30 +187,30 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      topic,          // 🆕 자유 주제 입력 (있으면 topic 방식)
-      grammarPoints,  // 기존 라이브러리 방식
-      curriculum,
-      unit,
+      mode = "topic", // "topic" | "mini-topik"
+      topic,
       difficulty = "beginner",
       count = 5,
-      questionTypes,  // 🆕 optional: ["fill-in-blank","multiple-choice"]
+      questionTypes,
+      // TOPIK 전용 파라미터
+      topikLevel = "topik1", // "topik1" | "topik2_mid" | "topik2_adv"
+      topikSection = "all",  // "all" | "reading" | "grammar_vocab"
     } = body as {
+      mode?: "topic" | "mini-topik";
       topic?: string;
-      grammarPoints?: string[];
-      curriculum?: string;
-      unit?: string;
-      difficulty: string;
-      count: number;
+      difficulty?: string;
+      count?: number;
       questionTypes?: string[];
+      topikLevel?: "topik1" | "topik2_mid" | "topik2_adv";
+      topikSection?: "all" | "reading" | "grammar_vocab";
     };
 
-    // 유효성 검사
-    const hasTopic = topic && topic.trim().length > 0;
-    const hasGrammar = grammarPoints && grammarPoints.length > 0;
-    if (!hasTopic && !hasGrammar) {
-      return NextResponse.json({ error: "BAD_REQUEST", message: "주제 또는 문법 항목이 필요합니다." }, { status: 400 });
-    }
+    const isTopik = mode === "mini-topik";
     const safeCount = Math.min(Math.max(Math.floor(Number(count) || 5), 1), 20);
+
+    if (!isTopik && (!topic || topic.trim().length === 0)) {
+      return NextResponse.json({ error: "BAD_REQUEST", message: "퀴즈 주제를 입력해주세요." }, { status: 400 });
+    }
 
     chalkCost = calcChalkCost(safeCount);
 
@@ -185,7 +218,10 @@ export async function POST(req: NextRequest) {
     const chalkEnabled = await isChalkEnabled();
     if (chalkEnabled) {
       try {
-        await deductCredits(uid, chalkCost, hasTopic ? `빠른 퀴즈 생성 (${safeCount}문항)` : "문법 퀴즈 생성");
+        const featureName = isTopik
+          ? `미니 TOPIK 모의고사 (${safeCount}문항)`
+          : `빠른 퀴즈 생성 (${safeCount}문항)`;
+        await deductCredits(uid, chalkCost, featureName);
         charged = true;
       } catch (e) {
         if (e instanceof InsufficientCreditsError) {
@@ -201,9 +237,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Gemini 호출
-    const prompt = hasTopic
-      ? buildTopicPrompt({ topic: topic!.trim(), difficulty, count: safeCount, questionTypes })
-      : buildGrammarPrompt({ grammarPoints: grammarPoints!, difficulty, count: safeCount });
+    const prompt = isTopik
+      ? buildMiniTopikPrompt({ topikLevel, section: topikSection, count: safeCount })
+      : buildTopicPrompt({ topic: topic!.trim(), difficulty, count: safeCount, questionTypes });
 
     const raw = await generateWithRetry(prompt);
 
@@ -228,26 +264,41 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "GENERATION_FAILED", message: "문항이 생성되지 않았습니다." }, { status: 502 });
     }
 
-    // Firestore 저장
-    const title = hasTopic
-      ? `${topic!.trim().slice(0, 30)} 퀴즈`
-      : `${curriculum || "커스텀"} ${unit || ""} 퀴즈`.trim();
+    // 제목 결정
+    let title = "";
+    if (isTopik) {
+      const levelLabel =
+        topikLevel === "topik1" ? "TOPIK I (초급)"
+        : topikLevel === "topik2_mid" ? "TOPIK II (중급)"
+        : "TOPIK II (고급)";
+      const secLabel =
+        topikSection === "reading" ? "읽기 모의고사"
+        : topikSection === "grammar_vocab" ? "어휘·문법 모의고사"
+        : "실전 모의고사";
+      title = `[${levelLabel}] ${secLabel}`;
+    } else {
+      title = `${topic!.trim().slice(0, 30)} 퀴즈`;
+    }
 
     const quizRef = adminDb.collection("ssamtoolQuizzes").doc();
     await quizRef.set({
       title,
-      topic: hasTopic ? topic!.trim() : null,
-      curriculum: !hasTopic ? (curriculum || null) : null,
-      unit: !hasTopic ? (unit || null) : null,
-      grammarPoints: !hasTopic ? grammarPoints : null,
-      difficulty,
-      questionTypes: questionTypes || null,
+      topic: isTopik ? title : topic!.trim(),
+      curriculum: null,
+      unit: null,
+      grammarPoints: null,
+      difficulty: isTopik
+        ? (topikLevel === "topik1" ? "beginner" : topikLevel === "topik2_mid" ? "intermediate" : "advanced")
+        : difficulty,
+      questionTypes: isTopik ? ["multiple-choice"] : (questionTypes || null),
       questions,
       createdBy: uid,
       createdAt: FieldValue.serverTimestamp(),
       isPublished: false,
       shareCode: null,
-      mode: hasTopic ? "topic" : "grammar",
+      mode: isTopik ? "mini-topik" : "topic",
+      topikLevel: isTopik ? topikLevel : null,
+      topikSection: isTopik ? topikSection : null,
     });
 
     return NextResponse.json({
@@ -255,6 +306,7 @@ export async function POST(req: NextRequest) {
       questions,
       chalkSpent: chalkCost,
       title,
+      mode: isTopik ? "mini-topik" : "topic",
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "알 수 없는 오류";
