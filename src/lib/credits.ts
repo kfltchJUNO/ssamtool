@@ -20,8 +20,8 @@ export async function deductCredits(uid: string, amount: number, reason: string)
     if (!snap.exists) throw new Error("USER_NOT_FOUND");
     const data = snap.data()!;
 
-    // 관리자 계정 (ot.helper@gmail.com, ot.helper7@gmail.com 등) 테스트용 무제한 차감 면제
-    const adminEmails = ["ot.helper@gmail.com", "ot.helper7@gmail.com"];
+    // 관리자 계정 (ot.helper7@gmail.com) 테스트용 무제한 차감 면제
+    const adminEmails = ["ot.helper7@gmail.com"];
     const userEmail = (data.email || "").toLowerCase();
     if (data.grade === "admin" || adminEmails.includes(userEmail)) {
       const logRef = adminDb.collection("chalkLogs").doc();

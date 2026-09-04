@@ -11,8 +11,8 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
-export const ADMIN_EMAILS = ["ot.helper@gmail.com", "ot.helper7@gmail.com"];
-export const ADMIN_EMAIL = "ot.helper@gmail.com";
+export const ADMIN_EMAILS = ["ot.helper7@gmail.com"];
+export const ADMIN_EMAIL = "ot.helper7@gmail.com";
 
 export function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;

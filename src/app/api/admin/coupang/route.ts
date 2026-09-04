@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 
-const ADMIN_EMAILS = ["ot.helper@gmail.com", "ot.helper7@gmail.com"];
+const ADMIN_EMAILS = ["ot.helper7@gmail.com"];
 
 async function verifyAdminRequest(req: NextRequest): Promise<string> {
   const authHeader = req.headers.get("authorization") || "";
