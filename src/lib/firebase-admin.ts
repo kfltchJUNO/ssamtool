@@ -3,8 +3,6 @@ import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getAuth, type Auth } from "firebase-admin/auth";
 
-// 지연 초기화: 빌드 타임(페이지 데이터 수집)에 환경변수가 없어도 죽지 않도록
-// 실제 요청이 들어올 때 처음으로 초기화됨
 let app: App | null = null;
 
 function getAdminApp(): App {
@@ -13,12 +11,28 @@ function getAdminApp(): App {
     app = getApps()[0];
     return app;
   }
+
+  const projectId =
+    process.env.FIREBASE_PROJECT_ID ||
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+    "wooriban1";
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  if (!clientEmail || !privateKey) {
+    throw new Error(
+      "FIREBASE_ADMIN_CONFIG_MISSING: Vercel 환경변수에 FIREBASE_CLIENT_EMAIL과 FIREBASE_PRIVATE_KEY 설정이 필요합니다."
+    );
+  }
+
+  // 따옴표 제거 및 개행 문자 복원
+  privateKey = privateKey.replace(/^"|"$/g, "").replace(/\\n/g, "\n");
+
   app = initializeApp({
     credential: cert({
-      projectId:   process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      // .env에 개행 문자가 이스케이프되어 저장되므로 복원 필요
-      privateKey:  process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      projectId,
+      clientEmail,
+      privateKey,
     }),
   });
   return app;

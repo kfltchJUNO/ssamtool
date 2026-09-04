@@ -118,11 +118,22 @@ export async function grantEventChalkOnce(
     const grantSnap = await tx.get(grantRef);
     if (grantSnap.exists) return false;   // 이미 지급됨
 
+    const userSnap = await tx.get(userRef);
     const expiresAt = Timestamp.fromMillis(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
     tx.set(grantRef, { uid, grantKey, amount, createdAt: FieldValue.serverTimestamp() });
-    tx.update(userRef, {
-      chalkEvents: FieldValue.arrayUnion({ amount, expiresAt, reason }),
-    });
+
+    if (!userSnap.exists) {
+      tx.set(userRef, {
+        uid,
+        chalk: 0,
+        chalkEvents: [{ amount, expiresAt, reason }],
+        createdAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } else {
+      tx.update(userRef, {
+        chalkEvents: FieldValue.arrayUnion({ amount, expiresAt, reason }),
+      });
+    }
     return true;
   });
 }
