@@ -24,6 +24,7 @@ const CHALK_USAGE = [
   { icon: "🎯", label: "AI 퀴즈 빠른 생성 (5문항)", cost: 1 },
   { icon: "🎯", label: "AI 퀴즈 빠른 생성 (10문항)", cost: 2 },
   { icon: "🔄", label: "퀴즈 개별 문항 AI 재생성", cost: 1 },
+  { icon: "📚", label: "수업용 문법 내용 정리 & 비교 도구", cost: 2 },
   { icon: "🧩", label: "TOPIK 단어장 & 십자말풀이 생성", cost: 2 },
   { icon: "📖", label: "AI 지문 난이도 자동 변환기", cost: 2 },
   { icon: "🪪", label: "이름표 PDF / 고화질 인쇄", cost: 0 },
