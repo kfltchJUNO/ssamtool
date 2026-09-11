@@ -789,6 +789,42 @@ export default function SeatingChart({
             </button>
           </div>
         )}
+
+        {/* 학생 배정 현황 리스트 (배정 완료 / 미배정 상태 확인) */}
+        {students.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-[#E8E0D0] space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-1 text-xs">
+              <span className="font-bold text-[#1B4332] flex items-center gap-1.5">
+                <span>📋</span> 학생 배정 현황 ({students.length}명 중 {assignments.size}명 배정됨)
+              </span>
+              <span className="text-[11px] text-[#64748B]">
+                배정 완료: <b className="text-[#1B4332]">{assignments.size}명</b> · 미배정: <b className="text-red-500">{Math.max(0, students.length - assignments.size)}명</b>
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {students.map(s => {
+                const isAssigned = Array.from(assignments.values()).includes(s.id);
+                return (
+                  <span
+                    key={s.id}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all ${
+                      isAssigned
+                        ? "bg-[#F0FFF4] border border-[#9AE6B4] text-[#1B4332]"
+                        : "bg-[#FEF2F2] border border-[#FCA5A5] text-[#991B1B]"
+                    }`}
+                  >
+                    <span>{isAssigned ? "✓" : "•"}</span>
+                    <span>{s.name}</span>
+                    <span className="text-[10px] opacity-75">
+                      {isAssigned ? "(배정)" : "(미배정)"}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 🖨️ 인쇄 설정 모달 (Task 3) */}

@@ -47,15 +47,19 @@ export default function PlinkoGame({
   const [completed, setCompleted] = useState(false);
   const [winners, setWinners] = useState<string[]>([]);
 
-  // 바닥 슬롯 개수 (5개)
+  // 바닥 슬롯 개수 및 라벨 (pickCount에 맞춰 동적 생성)
   const numSlots = 5;
-  const slotLabels = useMemo(() => [
-    "통과",
-    "👑 2위",
-    "🎉 1위",
-    "👑 3위",
-    "통과",
-  ], []);
+  const slotLabels = useMemo(() => {
+    if (pickCount === 1) {
+      return ["통과", "통과", "🎉 당첨!", "통과", "통과"];
+    } else if (pickCount === 2) {
+      return ["통과", "👑 1위", "통과", "👑 2위", "통과"];
+    } else if (pickCount === 3) {
+      return ["👑 2위", "통과", "🎉 1위", "통과", "👑 3위"];
+    } else {
+      return ["👑 1위", "👑 2위", "👑 3위", "👑 4위", "👑 5위"];
+    }
+  }, [pickCount]);
 
   // 핀 그리드 생성
   const pins = useMemo(() => {
@@ -261,22 +265,34 @@ export default function PlinkoGame({
         setCompleted(true);
         playFanfare(soundEnabled, 0.6);
 
-        // 당첨자 선정 (1위, 2위, 3위 슬롯에 들어간 학생)
-        const won: string[] = [];
+        // 당첨자 선정 (당첨/위 슬롯에 들어간 구슬)
+        const prizeBalls: { name: string; priority: number }[] = [];
         ballsRef.current.forEach(b => {
-          if (b.landedSlot !== null && slotLabels[b.landedSlot].includes("1위")) {
-            won.unshift(b.name); // 1등 맨 앞
-          } else if (b.landedSlot !== null && slotLabels[b.landedSlot].includes("위")) {
-            won.push(b.name);
+          if (b.landedSlot !== null) {
+            const label = slotLabels[b.landedSlot];
+            if (label.includes("1위") || label.includes("당첨!")) {
+              prizeBalls.push({ name: b.name, priority: 1 });
+            } else if (label.includes("2위")) {
+              prizeBalls.push({ name: b.name, priority: 2 });
+            } else if (label.includes("3위")) {
+              prizeBalls.push({ name: b.name, priority: 3 });
+            } else if (label.includes("위")) {
+              prizeBalls.push({ name: b.name, priority: 4 });
+            }
           }
         });
 
-        // 당첨 슬롯에 아무도 안 들어갔을 때의 폴백 (가장 가운데 슬롯에 가까운 구슬)
-        if (won.length === 0 && ballsRef.current.length > 0) {
-          won.push(ballsRef.current[0].name);
+        // 우선순위 정렬 후 이름 추출
+        prizeBalls.sort((a, b) => a.priority - b.priority);
+        let won = prizeBalls.map(p => p.name);
+
+        // 당첨 구슬이 부족할 때 (모두 통과 슬롯에 빠진 경우) 나머지 구슬 중 랜덤 보충
+        if (won.length < pickCount) {
+          const remaining = ballsRef.current.map(b => b.name).filter(n => !won.includes(n));
+          won = [...won, ...remaining];
         }
 
-        setWinners(won);
+        setWinners(won.slice(0, pickCount));
       }
     };
 

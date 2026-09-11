@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import NameTagGenerator from "@/components/NameTagGenerator";
@@ -21,10 +21,11 @@ import ClassroomTools from "@/components/ClassroomTools";
 import WorksheetGenerator from "@/components/WorksheetGenerator";
 import TextAdapter from "@/components/TextAdapter";
 import GrammarDiff from "@/components/GrammarDiff";
+import Whiteboard from "@/components/Whiteboard";
 import { useAuth } from "@/context/AuthContext";
 import { signOut } from "@/lib/auth";
 
-type Tab = "nametag"|"timer"|"random"|"seating"|"group"|"speaking"|"memo"|"quiz"|"tools"|"worksheet"|"textadapt"|"grammardiff";
+type Tab = "nametag"|"timer"|"random"|"seating"|"group"|"speaking"|"memo"|"quiz"|"board"|"tools"|"worksheet"|"textadapt"|"grammardiff";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "nametag",     label: "이름표",       icon: "🪪" },
@@ -34,11 +35,12 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "group",       label: "모둠",         icon: "👥" },
   { id: "speaking",    label: "시험순서",     icon: "🎤" },
   { id: "memo",        label: "메모",         icon: "📝" },
+  { id: "board",       label: "전자칠판",     icon: "🖍️" },
+  { id: "tools",       label: "효과음/도장",  icon: "🔔" },
   { id: "quiz",        label: "AI 퀴즈",      icon: "🎯" },
   { id: "grammardiff", label: "문법 정리",    icon: "📚" },
   { id: "worksheet",   label: "단어장/십자말", icon: "🧩" },
   { id: "textadapt",   label: "지문 변환",    icon: "📖" },
-  { id: "tools",       label: "효과음/도장",  icon: "🔔" },
 ];
 
 export default function AppPage() {
@@ -51,6 +53,14 @@ export default function AppPage() {
   const [loadedGroupId,  setLoadedGroupId]  = useState("");
 
   const [showChalkModal, setShowChalkModal] = useState(false);
+  const tabBarRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollTabs = (direction: "left" | "right") => {
+    if (tabBarRef.current) {
+      const scrollAmount = direction === "left" ? -200 : 200;
+      tabBarRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+    }
+  };
 
   const { user, userDoc, chalk, chalkPaid, chalkEvent, admin, loading } = useAuth();
 
@@ -168,16 +178,36 @@ export default function AppPage() {
           <AppPromoBar />
         </div>
 
-        {/* 탭 */}
-        <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto" style={{scrollbarWidth:"none"}}>
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1 px-3 py-2.5 text-xs font-medium rounded-t-md transition-all whitespace-nowrap flex-shrink-0 ${
-                activeTab === tab.id ? "bg-[#F5F0E8] text-[#1B4332] font-bold" : "text-[#A8D5B7] hover:text-white hover:bg-[#2D6A4F]"
-              }`}>
-              <span>{tab.icon}</span><span>{tab.label}</span>
-            </button>
-          ))}
+        {/* 탭 바 (좌우 스크롤 내비게이션 포함) */}
+        <div className="max-w-5xl mx-auto px-2 relative flex items-center">
+          <button
+            onClick={() => scrollTabs("left")}
+            className="flex-shrink-0 w-7 h-7 rounded-full bg-[#1B4332]/80 hover:bg-[#1B4332] text-[#F5F0E8] flex items-center justify-center text-xs font-bold mr-1 z-10 shadow-sm transition-all"
+            title="이전 메뉴"
+          >
+            ‹
+          </button>
+          <div
+            ref={tabBarRef}
+            className="flex-1 flex gap-1 overflow-x-auto scroll-smooth py-0.5"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {TABS.map(tab => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-1 px-3 py-2 text-xs font-medium rounded-t-md transition-all whitespace-nowrap flex-shrink-0 ${
+                  activeTab === tab.id ? "bg-[#F5F0E8] text-[#1B4332] font-bold shadow-sm" : "text-[#A8D5B7] hover:text-white hover:bg-[#2D6A4F]"
+                }`}>
+                <span>{tab.icon}</span><span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => scrollTabs("right")}
+            className="flex-shrink-0 w-7 h-7 rounded-full bg-[#1B4332]/80 hover:bg-[#1B4332] text-[#F5F0E8] flex items-center justify-center text-xs font-bold ml-1 z-10 shadow-sm transition-all"
+            title="다음 메뉴"
+          >
+            ›
+          </button>
         </div>
       </header>
 
@@ -209,9 +239,10 @@ export default function AppPage() {
             {activeTab === "group"    && <GroupDivider      {...sharedProps} />}
             {activeTab === "speaking"  && <SpeakingOrder     {...sharedProps} />}
             {activeTab === "memo"      && <StudentMemo       {...sharedProps} preloadedGroupId={loadedGroupId} />}
+            {activeTab === "board"       && <Whiteboard />}
             {activeTab === "quiz"        && <QuizItemManager />}
             {activeTab === "grammardiff" && <GrammarDiff />}
-            {activeTab === "tools"       && <ClassroomTools    preloadedStudents={loadedStudents} />}
+            {activeTab === "tools"       && <ClassroomTools    {...sharedProps} />}
             {activeTab === "worksheet"   && <WorksheetGenerator />}
             {activeTab === "textadapt"   && <TextAdapter />}
           </div>

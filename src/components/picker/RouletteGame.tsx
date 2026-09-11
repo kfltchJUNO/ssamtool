@@ -105,16 +105,24 @@ export default function RouletteGame({
     setSpinning(true);
     setWinner(null);
 
-    // 바늘은 12시 방향 (위쪽 = -PI/2)
-    // 섹터 i의 중심 각도가 12시에 도달하도록 목표 회전 각도 계산
+    // 바늘은 12시 방향 (캔버스 좌표계에서 위쪽 = -PI/2 = 1.5*PI)
+    // 섹터 i의 중심 각도는 startA + sliceAngle / 2 = currentAngle + (winnerIdx + 0.5) * sliceAngle
+    // 이 중심이 12시 방향 (pointerAngle = 1.5 * Math.PI)에 정확히 오도록 하려면:
+    // destination + (winnerIdx + 0.5) * sliceAngle = pointerAngle + 2*k*PI
+    // 즉, destination = pointerAngle - (winnerIdx + 0.5) * sliceAngle (modulo 2*PI)
+    const pointerAngle = 1.5 * Math.PI;
     const targetSliceCenter = (winnerIdx + 0.5) * sliceAngle;
-    const pointerAngle = (3 * Math.PI) / 2; // 12시 방향
-    const finalAngle = pointerAngle - targetSliceCenter;
+    const desiredAngle = (pointerAngle - targetSliceCenter) % (2 * Math.PI);
+    const normalizedDesired = desiredAngle < 0 ? desiredAngle + 2 * Math.PI : desiredAngle;
 
-    // 최소 5회~7회 바퀴 회전
-    const extraSpins = 5 + Math.floor(Math.random() * 3);
-    const startAngle = angleRef.current % (2 * Math.PI);
-    const totalRotation = extraSpins * 2 * Math.PI + ((finalAngle - startAngle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    // 최소 6바퀴 회전
+    const extraSpins = 6 + Math.floor(Math.random() * 2);
+    const startAngle = angleRef.current;
+    const currentNorm = (startAngle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    let diff = normalizedDesired - currentNorm;
+    if (diff <= 0) diff += 2 * Math.PI;
+
+    const totalRotation = extraSpins * 2 * Math.PI + diff;
     const destination = startAngle + totalRotation;
 
     const duration = 4500; // 4.5초
@@ -131,10 +139,10 @@ export default function RouletteGame({
 
       drawWheel(curAngle);
 
-      // 현재 바늘이 지나가는 슬라이스 감지하여 틱 사운드 재생
-      const normalizedAngle = (pointerAngle - curAngle) % (2 * Math.PI);
-      const positiveAngle = normalizedAngle < 0 ? normalizedAngle + 2 * Math.PI : normalizedAngle;
-      const curSliceIdx = Math.floor(positiveAngle / sliceAngle);
+      // 현재 바늘(12시 = pointerAngle)이 가리키는 슬라이스 인덱스 계산
+      const curNorm = (curAngle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      const relativeAngle = (pointerAngle - curNorm + 2 * Math.PI) % (2 * Math.PI);
+      const curSliceIdx = Math.floor(relativeAngle / sliceAngle) % numItems;
 
       if (curSliceIdx !== lastSliceIdxRef.current) {
         lastSliceIdxRef.current = curSliceIdx;
@@ -149,7 +157,6 @@ export default function RouletteGame({
         setSpinning(false);
         setWinner(chosenWinner);
         playFanfare(soundEnabled, 0.6);
-        onFinish(chosenWinner);
       }
     };
 
@@ -165,14 +172,20 @@ export default function RouletteGame({
     setSpinning(false);
     setWinner(chosenWinner);
     playFanfare(soundEnabled, 0.6);
-    onFinish(chosenWinner);
+  };
+
+  const handleConfirm = () => {
+    if (winner) {
+      onFinish(winner);
+      setWinner(null);
+    }
   };
 
   return (
     <div className="flex flex-col items-center space-y-4">
       {/* 룰렛 컨테이너 & 상단 지침 바늘 */}
       <div className="relative w-[340px] h-[340px] sm:w-[400px] sm:h-[400px] flex items-center justify-center select-none">
-        {/* 상단 화살표 바늘 (12시 방향) */}
+        {/* 상단 화살표 바늘 (12시 방향 정중앙) */}
         <div className="absolute -top-1 left-1/2 -translate-x-1/2 z-20 pointer-events-none drop-shadow-md">
           <div className="w-0 h-0 border-x-[14px] border-x-transparent border-t-[26px] border-t-[#DC2626]" />
         </div>
@@ -186,30 +199,40 @@ export default function RouletteGame({
       </div>
 
       {/* 액션 버튼 */}
-      <div className="flex gap-3 items-center">
-        <button
-          onClick={spin}
-          disabled={spinning || numItems === 0}
-          className="px-8 py-3.5 bg-[#1B4332] text-white font-black text-lg rounded-2xl hover:bg-[#2D6A4F] disabled:opacity-40 shadow-lg transition-transform active:scale-95"
-        >
-          {spinning ? "🎡 돌아가는 중..." : "🎡 룰렛 돌리기!"}
-        </button>
-
-        {spinning && (
+      {!winner && (
+        <div className="flex gap-3 items-center">
           <button
-            onClick={skip}
-            className="px-4 py-3.5 bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl hover:bg-gray-300"
+            onClick={spin}
+            disabled={spinning || numItems === 0}
+            className="px-8 py-3.5 bg-[#1B4332] text-white font-black text-lg rounded-2xl hover:bg-[#2D6A4F] disabled:opacity-40 shadow-lg transition-transform active:scale-95"
           >
-            ⏩ 스킵
+            {spinning ? "🎡 돌아가는 중..." : "🎡 룰렛 돌리기!"}
           </button>
-        )}
-      </div>
 
-      {/* 당첨자 팝업 발표 카드 */}
+          {spinning && (
+            <button
+              onClick={skip}
+              className="px-4 py-3.5 bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl hover:bg-gray-300"
+            >
+              ⏩ 스킵
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 당첨자 팝업 발표 카드 & 확인 버튼 */}
       {winner && (
-        <div className="w-full max-w-md bg-gradient-to-r from-[#F0FFF4] via-white to-[#F0FFF4] border-2 border-[#1B4332] p-5 rounded-2xl text-center shadow-xl animate-bounce">
+        <div className="w-full max-w-md bg-gradient-to-r from-[#F0FFF4] via-white to-[#F0FFF4] border-2 border-[#1B4332] p-5 rounded-2xl text-center shadow-xl space-y-3 animate-in fade-in zoom-in-95">
           <p className="text-xs font-bold text-[#2D6A4F] uppercase tracking-wider">🎉 축하합니다! 당첨 학생 🎉</p>
-          <p className="text-3xl font-black text-[#1B4332] mt-1 tracking-wide">{winner}</p>
+          <p className="text-3xl font-black text-[#1B4332] tracking-wide">{winner}</p>
+          <div className="pt-2">
+            <button
+              onClick={handleConfirm}
+              className="w-full py-3 bg-[#1B4332] text-white font-black rounded-xl hover:bg-[#2D6A4F] shadow-md transition-transform active:scale-95"
+            >
+              ✅ 확인 (결과 확정)
+            </button>
+          </div>
         </div>
       )}
     </div>

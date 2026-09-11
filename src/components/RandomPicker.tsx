@@ -259,33 +259,42 @@ export default function RandomPicker({
         </div>
       )}
 
-      {/* 인터랙티브 연출 모드 선택 탭 */}
-      <div className="flex gap-2 justify-center flex-wrap">
-        {[
-          { id: "slot",     label: "🎰 빠른 슬롯" },
-          { id: "ladder",   label: "🪜 사다리타기" },
-          { id: "racing",   label: "🏎️ 레이싱" },
-          { id: "bomb",     label: "💣 폭탄 돌리기" },
-          { id: "balloon",  label: "🎈 풍선 다트" },
-          { id: "plinko",   label: "🪙 플링코 구슬" },
-          { id: "roulette", label: "🎡 회전 룰렛" },
-          { id: "cards",    label: "🎴 3D 카드" },
-        ].map(m => (
-          <button
-            key={m.id}
-            onClick={() => setMode(m.id as PickerMode)}
-            className={`px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all ${
-              mode === m.id
-                ? "bg-[#1B4332] text-white shadow-lg scale-105"
-                : "bg-white text-[#475569] border border-[#CBD5E1] hover:border-[#1B4332]"
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
+      {/* 인터랙티브 연출 모드 선택 버튼 카드 */}
+      <div className="bg-white rounded-2xl border border-[#E8E0D0] p-4 shadow-sm space-y-3">
+        <h3 className="text-xs font-bold text-[#1B4332] flex items-center gap-1.5">
+          <span>🎮</span> 교실 집중 게임형 뽑기 (원하는 게임을 클릭하면 대형 화면으로 실행됩니다)
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {[
+            { id: "slot",     label: "빠른 슬롯",    icon: "🎰", desc: "이름이 빠르게 깜빡이다 멈춤" },
+            { id: "ladder",   label: "사다리타기",   icon: "🪜", desc: "한국식 정통 사다리 연출" },
+            { id: "racing",   label: "미니 레이싱",  icon: "🏎️", desc: "트랙을 달리며 순위 경쟁" },
+            { id: "bomb",     label: "폭탄 돌리기",  icon: "💣", desc: "시한폭탄이 째깍째깍 쾅!" },
+            { id: "balloon",  label: "풍선 다트",    icon: "🎈", desc: "다트를 던져 풍선 팡팡" },
+            { id: "plinko",   label: "플링코 구슬",  icon: "🪙", desc: "핀 사이를 튕기며 낙하" },
+            { id: "roulette", label: "회전 룰렛",    icon: "🎡", desc: "원형 룰렛 회전판" },
+            { id: "cards",    label: "3D 카드 뒤집기", icon: "🎴", desc: "학생이 직접 카드 선택" },
+          ].map(m => (
+            <button
+              key={m.id}
+              onClick={() => setMode(m.id as PickerMode)}
+              className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                mode === m.id
+                  ? "border-[#1B4332] bg-[#F0FFF4] shadow-md ring-2 ring-[#1B4332]/20"
+                  : "border-[#E2E8F0] bg-[#F8FAFC] hover:border-[#1B4332] hover:bg-white"
+              }`}
+            >
+              <div>
+                <span className="text-2xl">{m.icon}</span>
+                <p className="font-black text-sm text-[#0F172A] mt-1">{m.label}</p>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">{m.desc}</p>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* ── 1. 빠른 슬롯머신 모드 ── */}
+      {/* ── 1. 기본 슬롯머신 모드 (인라인 렌더링) ── */}
       {mode === "slot" && (
         <div className="bg-white rounded-3xl border-2 border-[#1B4332] p-8 text-center space-y-6 shadow-xl">
           <div className="h-32 flex items-center justify-center bg-slate-50 rounded-2xl border border-slate-200 shadow-inner">
@@ -314,142 +323,152 @@ export default function RandomPicker({
         </div>
       )}
 
-      {/* ── 2. 한국형 사다리타기 모드 ── */}
-      {mode === "ladder" && (
-        <div className="bg-white rounded-3xl border-2 border-emerald-700 p-6 shadow-xl">
-          {pool.length < 2 ? (
-            <div className="p-8 text-center text-gray-500 font-bold">
-              사다리타기는 최소 2명 이상의 학생이 필요합니다.
-            </div>
-          ) : (
-            <LadderGame
-              candidates={pool}
-              pickCount={pickCount}
-              onFinish={handleGameFinish}
-              soundEnabled={soundEnabled}
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── 3. 미니 달리기 레이싱 모드 ── */}
-      {mode === "racing" && (
-        <div className="bg-white rounded-3xl border-2 border-amber-600 p-6 shadow-xl">
-          {pool.length < 2 ? (
-            <div className="p-8 text-center text-gray-500 font-bold">
-              레이싱은 최소 2명 이상의 학생이 필요합니다.
-            </div>
-          ) : (
-            <RacingGame
-              candidates={pool}
-              pickCount={pickCount}
-              onFinish={handleGameFinish}
-              soundEnabled={soundEnabled}
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── 4. 시한폭탄 돌리기 모드 ── */}
-      {mode === "bomb" && (
-        <div className="bg-white rounded-3xl border-2 border-red-500 p-6 shadow-xl">
-          {pool.length < 2 ? (
-            <div className="p-8 text-center text-gray-500 font-bold">
-              폭탄 돌리기는 최소 2명 이상의 학생이 필요합니다.
-            </div>
-          ) : (
-            <BombGame
-              candidates={pool}
-              pickCount={pickCount}
-              onFinish={handleGameFinish}
-              soundEnabled={soundEnabled}
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── 5. 풍선 다트 팡팡 모드 ── */}
-      {mode === "balloon" && (
-        <div className="bg-white rounded-3xl border-2 border-pink-400 p-6 shadow-xl">
-          {pool.length < 2 ? (
-            <div className="p-8 text-center text-gray-500 font-bold">
-              풍선 다트는 최소 2명 이상의 학생이 필요합니다.
-            </div>
-          ) : (
-            <BalloonGame
-              candidates={pool}
-              pickCount={pickCount}
-              onFinish={handleGameFinish}
-              soundEnabled={soundEnabled}
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── 6. 플링코 구슬 낙하 모드 ── */}
-      {mode === "plinko" && (
-        <div className="bg-white rounded-3xl border-2 border-amber-500 p-6 shadow-xl">
-          {pool.length < 2 ? (
-            <div className="p-8 text-center text-gray-500 font-bold">
-              플링코 구슬은 최소 2명 이상의 학생이 필요합니다.
-            </div>
-          ) : (
-            <PlinkoGame
-              candidates={pool}
-              pickCount={pickCount}
-              onFinish={handleGameFinish}
-              soundEnabled={soundEnabled}
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── 7. 회전 룰렛 모드 ── */}
-      {mode === "roulette" && (
-        <div className="bg-white rounded-3xl border-2 border-[#1B4332] p-6 shadow-xl">
-          {pool.length < 2 ? (
-            <div className="p-8 text-center text-gray-500 font-bold">
-              회전 룰렛은 최소 2명 이상의 학생이 필요합니다.
-            </div>
-          ) : (
-            <RouletteGame
-              candidates={pool}
-              onFinish={winner => handleGameFinish([winner])}
-              soundEnabled={soundEnabled}
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── 5. 3D 카드 뒤집기 모드 ── */}
-      {mode === "cards" && (
-        <div className="bg-white rounded-3xl border-2 border-[#1B4332] p-6 space-y-4 text-center shadow-xl">
-          <p className="text-sm font-bold text-gray-600">
-            카드 번호를 클릭하면 숨겨진 학생 이름이 공개됩니다! 🎴
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3.5">
-            {pool.map((name, i) => (
-              <div
-                key={i}
-                onClick={() => {
-                  setCardFlipped(prev => {
-                    const next = { ...prev, [i]: !prev[i] };
-                    if (!prev[i]) {
-                      playFanfare(soundEnabled, 0.4);
-                      handleGameFinish([name]);
-                    }
-                    return next;
-                  });
-                }}
-                className={`h-24 rounded-2xl cursor-pointer select-none flex items-center justify-center font-black text-sm transition-all duration-300 transform border-2 ${
-                  cardFlipped[i]
-                    ? "bg-[#F0FFF4] border-[#1B4332] text-[#1B4332] shadow-inner scale-105"
-                    : "bg-[#1B4332] border-[#2D6A4F] text-[#F2C94C] shadow-lg hover:-translate-y-1 hover:brightness-110"
-                }`}
-              >
-                {cardFlipped[i] ? name : `❓ 카드 ${i + 1}`}
+      {/* ── 2~8. 인터랙티브 게임 전용 대형 팝업 모달 (slot 제외) ── */}
+      {mode !== "slot" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
+          <div
+            className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border-2 border-[#1B4332] overflow-hidden flex flex-col my-auto max-h-[95vh]"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 모달 상단 헤더 */}
+            <div className="chalk-header px-6 py-4 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">
+                  {mode === "ladder" ? "🪜" :
+                   mode === "racing" ? "🏎️" :
+                   mode === "bomb" ? "💣" :
+                   mode === "balloon" ? "🎈" :
+                   mode === "plinko" ? "🪙" :
+                   mode === "roulette" ? "🎡" : "🎴"}
+                </span>
+                <div>
+                  <h3 className="chalk-text font-black text-base sm:text-lg">
+                    {mode === "ladder" ? "사다리타기 뽑기" :
+                     mode === "racing" ? "미니 레이싱 경주" :
+                     mode === "bomb" ? "시한폭탄 돌리기" :
+                     mode === "balloon" ? "풍선 다트 팡팡" :
+                     mode === "plinko" ? "플링코 구슬 낙하" :
+                     mode === "roulette" ? "회전 룰렛 판" : "3D 카드 뒤집기"}
+                  </h3>
+                  <p className="text-[#A8D5B7] text-xs">
+                    후보 학생: {pool.length}명 · 당첨 목표: {pickCount}명
+                  </p>
+                </div>
               </div>
-            ))}
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  className="text-xs px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white"
+                >
+                  {soundEnabled ? "🔊" : "🔇"}
+                </button>
+                <button
+                  onClick={() => setMode("slot")}
+                  className="text-white hover:bg-white/20 w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold transition-colors"
+                  title="게임 닫기"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* 게임 본문 */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              {pool.length < 2 ? (
+                <div className="p-10 text-center text-gray-500 font-bold space-y-3">
+                  <div className="text-4xl">👥</div>
+                  <p>최소 2명 이상의 학생이 필요합니다.</p>
+                  <button
+                    onClick={() => setMode("slot")}
+                    className="px-4 py-2 bg-[#1B4332] text-white text-xs font-bold rounded-xl"
+                  >
+                    명단 입력하러 가기
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {mode === "ladder" && (
+                    <LadderGame
+                      candidates={pool}
+                      pickCount={pickCount}
+                      onFinish={handleGameFinish}
+                      soundEnabled={soundEnabled}
+                    />
+                  )}
+                  {mode === "racing" && (
+                    <RacingGame
+                      candidates={pool}
+                      pickCount={pickCount}
+                      onFinish={handleGameFinish}
+                      soundEnabled={soundEnabled}
+                    />
+                  )}
+                  {mode === "bomb" && (
+                    <BombGame
+                      candidates={pool}
+                      pickCount={pickCount}
+                      onFinish={handleGameFinish}
+                      soundEnabled={soundEnabled}
+                    />
+                  )}
+                  {mode === "balloon" && (
+                    <BalloonGame
+                      candidates={pool}
+                      pickCount={pickCount}
+                      onFinish={handleGameFinish}
+                      soundEnabled={soundEnabled}
+                    />
+                  )}
+                  {mode === "plinko" && (
+                    <PlinkoGame
+                      candidates={pool}
+                      pickCount={pickCount}
+                      onFinish={handleGameFinish}
+                      soundEnabled={soundEnabled}
+                    />
+                  )}
+                  {mode === "roulette" && (
+                    <RouletteGame
+                      candidates={pool}
+                      onFinish={winner => handleGameFinish([winner])}
+                      soundEnabled={soundEnabled}
+                    />
+                  )}
+                  {mode === "cards" && (
+                    <div className="space-y-4 text-center">
+                      <p className="text-sm font-bold text-gray-600">
+                        카드 번호를 클릭하면 숨겨진 학생 이름이 공개됩니다! 🎴
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                        {pool.map((name, i) => (
+                          <div
+                            key={i}
+                            onClick={() => {
+                              setCardFlipped(prev => {
+                                const next = { ...prev, [i]: !prev[i] };
+                                if (!prev[i]) {
+                                  playFanfare(soundEnabled, 0.4);
+                                  handleGameFinish([name]);
+                                }
+                                return next;
+                              });
+                            }}
+                            className={`h-24 rounded-2xl cursor-pointer select-none flex items-center justify-center font-black text-sm transition-all duration-300 transform border-2 ${
+                              cardFlipped[i]
+                                ? "bg-[#F0FFF4] border-[#1B4332] text-[#1B4332] shadow-inner scale-105"
+                                : "bg-[#1B4332] border-[#2D6A4F] text-[#F2C94C] shadow-lg hover:-translate-y-1 hover:brightness-110"
+                            }`}
+                          >
+                            {cardFlipped[i] ? name : `❓ 카드 ${i + 1}`}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

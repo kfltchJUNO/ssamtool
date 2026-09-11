@@ -238,7 +238,7 @@ const APP_PROMOS_LIST = [
     cta:   "명함 보기",
     bg:    "bg-[#FAF5FF]",
     text:  "text-[#6B46C1]",
-    href:  "https://aim-nc.vercel.app/kang",
+    href:  "https://aim-nc.vercel.app/",
   },
 ];
 
