@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 
 type BoardTheme = "greenboard" | "blackboard" | "whiteboard";
@@ -255,7 +253,9 @@ export default function Whiteboard() {
     a.click();
   };
 
-  // ── Firestore 실시간 태블릿 <-> 프로젝터 동기화 ─────────────────
+  // ── 서버 API (/api/whiteboard) 기반 실시간 태블릿 <-> 프로젝터 동기화 ─────────────────
+  const lastSyncTimestampRef = useRef<number>(0);
+
   const syncToFirebase = async (newStrokes: DrawStroke[]) => {
     if (!roomCode.trim()) return;
     try {
@@ -267,12 +267,23 @@ export default function Whiteboard() {
         points: s.points.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) })),
       }));
 
-      await setDoc(doc(db, "ssamtoolBoards", roomCode.trim().toUpperCase()), {
-        strokes: sanitized,
-        theme,
-        updatedAt: Date.now(),
+      const res = await fetch("/api/whiteboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomCode: roomCode.trim().toUpperCase(),
+          strokes: sanitized,
+          theme,
+        }),
       });
-      setSyncStatus("동기화됨");
+
+      if (res.ok) {
+        const data = await res.json();
+        lastSyncTimestampRef.current = data.updatedAt || Date.now();
+        setSyncStatus("동기화됨");
+      } else {
+        setSyncStatus("전송 실패");
+      }
     } catch (err) {
       console.error("Board sync error:", err);
       setSyncStatus("전송 실패");
@@ -287,27 +298,45 @@ export default function Whiteboard() {
     setIsLiveSync(v => !v);
   };
 
-  // 실시간 구독 리스너
+  // 실시간 폴링 리스너 (1초 간격 서버 최신 판서 동기화)
   useEffect(() => {
     if (!isLiveSync || !roomCode.trim()) return;
 
-    const boardDocRef = doc(db, "ssamtoolBoards", roomCode.trim().toUpperCase());
-    const unsubscribe = onSnapshot(boardDocRef, snap => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data && Array.isArray(data.strokes)) {
-          // 로컬과 다를 경우만 반영
-          setStrokes(data.strokes);
-          if (data.theme && data.theme !== theme) {
-            setTheme(data.theme);
-          }
-          redraw(data.strokes);
-          setSyncStatus("실시간 연결 중");
-        }
-      }
-    });
+    let active = true;
+    const fetchLatestBoard = async () => {
+      try {
+        const res = await fetch(`/api/whiteboard?roomCode=${encodeURIComponent(roomCode.trim().toUpperCase())}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!active) return;
 
-    return () => unsubscribe();
+        if (data.exists && data.board) {
+          const remoteTime = data.board.updatedAt || 0;
+          // 내가 방금 전송한 것보다 새로운 원격 변경사항이 있을 때만 캔버스 반영
+          if (remoteTime > lastSyncTimestampRef.current) {
+            lastSyncTimestampRef.current = remoteTime;
+            setStrokes(data.board.strokes);
+            if (data.board.theme && data.board.theme !== theme) {
+              setTheme(data.board.theme);
+            }
+            redraw(data.board.strokes);
+            setSyncStatus("동기화됨");
+          } else {
+            setSyncStatus("실시간 연결 중");
+          }
+        }
+      } catch (e) {
+        console.warn("Polling whiteboard error:", e);
+      }
+    };
+
+    fetchLatestBoard();
+    const interval = setInterval(fetchLatestBoard, 1200);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [isLiveSync, roomCode, redraw, theme]);
 
   const toggleFullscreen = () => {

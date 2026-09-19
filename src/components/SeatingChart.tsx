@@ -36,6 +36,17 @@ const ROOM_ELEMENTS: ElementType[] = ["teacher", "door", "tv", "window", "board"
 
 function uid8() { return Math.random().toString(36).slice(2, 10); }
 
+function getDefaultElements(cols: number = 6, rows: number = 5): ClassElement[] {
+  const els: ClassElement[] = [];
+  els.push({ id: "teacher-main", type: "teacher", x: Math.floor(cols / 2), y: 0 });
+  for (let r = 1; r <= rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      els.push({ id: `desk-${c}-${r}`, type: "desk", x: c, y: r });
+    }
+  }
+  return els;
+}
+
 export default function SeatingChart({
   preloadedStudents = [],
   preloadedLabel = "",
@@ -48,7 +59,7 @@ export default function SeatingChart({
   // 교실 기본 그리드 및 구조 (Layout)
   const [cols, setCols] = useState(6);
   const [rows, setRows] = useState(5);
-  const [elements, setElements] = useState<ClassElement[]>([]);
+  const [elements, setElements] = useState<ClassElement[]>(() => getDefaultElements(6, 5));
   const [layoutName, setLayoutName] = useState("302호 교실");
   const [currentLayoutId, setCurrentLayoutId] = useState<string | null>(null);
 
@@ -120,9 +131,54 @@ export default function SeatingChart({
     setCharts(chartList);
   };
 
+  // ── 유효 책상 (그리드 범위 내 실제 책상만 필터링) ─────────────────
+  const desks = useMemo(() => {
+    return elements.filter(
+      e => e.type === "desk" && e.x >= 0 && e.x < cols && e.y >= 0 && e.y <= rows
+    );
+  }, [elements, cols, rows]);
+
+  const validDeskIds = useMemo(() => new Set(desks.map(d => d.id)), [desks]);
+
+  // 유효한 책상에 배정된 학생 ID Set
+  const assignedStudentIds = useMemo(() => {
+    const ids = new Set<string>();
+    assignments.forEach((studentId, deskId) => {
+      if (validDeskIds.has(deskId)) {
+        ids.add(studentId);
+      }
+    });
+    return ids;
+  }, [assignments, validDeskIds]);
+
+  const assignedCount = assignedStudentIds.size;
+
+  // 유효 책상 범위를 벗어난 이전 배정 자동 정리
+  useEffect(() => {
+    setAssignments(prev => {
+      let changed = false;
+      const next = new Map<string, string>();
+      prev.forEach((studentId, deskId) => {
+        if (validDeskIds.has(deskId)) {
+          next.set(deskId, studentId);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [validDeskIds]);
+
   // ── 1. 학생 무작위 배치 실행 (Task 1 순수 함수 호출) ────────────────
   const handleRandomAssign = () => {
-    if (students.length === 0) return;
+    if (students.length === 0) {
+      alert("배정할 학생이 없습니다. 학생 명단을 먼저 입력하거나 반을 불러와 주세요.");
+      return;
+    }
+    if (desks.length === 0) {
+      alert("배치할 수 있는 책상이 없습니다. 책상을 먼저 추가해 주세요.");
+      return;
+    }
     
     let previousAssignments: { deskId: string; studentId: string }[] | undefined = undefined;
     if (avoidPrevious && charts.length > 0) {
@@ -135,7 +191,7 @@ export default function SeatingChart({
       separatedPairs,
     };
 
-    const result = assignSeats(students, elements, options);
+    const result = assignSeats(students, desks, options);
     setAssignments(result.assignments);
     setAssignResult(result);
   };
@@ -316,7 +372,7 @@ export default function SeatingChart({
     let added = 0;
     const newElements = [...elements];
 
-    for (let r = 0; r < rows && added < needed; r++) {
+    for (let r = 0; r <= rows && added < needed; r++) {
       for (let c = 0; c < cols && added < needed; c++) {
         const occupied = newElements.some(e => e.x === c && e.y === r);
         if (!occupied) {
@@ -378,8 +434,6 @@ export default function SeatingChart({
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
 
   // ── 4. 스케일링 인쇄 미리보기 및 실행 (Task 3) ──────────────────────
-  const desks = useMemo(() => elements.filter(e => e.type === "desk"), [elements]);
-
   // 용지 크기 픽셀 매핑 (mm -> px conversion, 96 DPI)
   const paperDimensions = useMemo(() => {
     const mmToPx = (mm: number) => Math.round(mm * 3.7795275591);
@@ -428,7 +482,7 @@ export default function SeatingChart({
 
         const px = c * (cW + gap);
         const py = r * (cH + gap);
-        const studentId = assignments.get(el.id);
+        const studentId = el.type === "desk" ? assignments.get(el.id) : undefined;
         const studentObj = students.find(s => s.id === studentId);
         const meta = ELEMENT_META[el.type];
 
@@ -557,7 +611,7 @@ export default function SeatingChart({
           </div>
 
           <div className="text-xs text-[#64748B]">
-            총 {students.length}명 · 배정 {assignments.size}석 · 남은 책상 {Math.max(0, desks.length - assignments.size)}석
+            총 {students.length}명 · 배정 {assignedCount}석 · 남은 책상 {Math.max(0, desks.length - assignedCount)}석
           </div>
         </div>
 
@@ -725,7 +779,7 @@ export default function SeatingChart({
                 const isSel = el && selectedEl === el.id;
                 const isDesk = el?.type === "desk";
 
-                const assignedStudentId = el ? assignments.get(el.id) : undefined;
+                const assignedStudentId = (el && isDesk) ? assignments.get(el.id) : undefined;
                 const studentObj = students.find(s => s.id === assignedStudentId);
 
                 return (
@@ -795,16 +849,16 @@ export default function SeatingChart({
           <div className="mt-4 pt-3 border-t border-[#E8E0D0] space-y-2">
             <div className="flex items-center justify-between flex-wrap gap-1 text-xs">
               <span className="font-bold text-[#1B4332] flex items-center gap-1.5">
-                <span>📋</span> 학생 배정 현황 ({students.length}명 중 {assignments.size}명 배정됨)
+                <span>📋</span> 학생 배정 현황 ({students.length}명 중 {assignedCount}명 배정됨)
               </span>
               <span className="text-[11px] text-[#64748B]">
-                배정 완료: <b className="text-[#1B4332]">{assignments.size}명</b> · 미배정: <b className="text-red-500">{Math.max(0, students.length - assignments.size)}명</b>
+                배정 완료: <b className="text-[#1B4332]">{assignedCount}명</b> · 미배정: <b className="text-red-500">{Math.max(0, students.length - assignedCount)}명</b>
               </span>
             </div>
 
             <div className="flex flex-wrap gap-1.5">
               {students.map(s => {
-                const isAssigned = Array.from(assignments.values()).includes(s.id);
+                const isAssigned = assignedStudentIds.has(s.id);
                 return (
                   <span
                     key={s.id}
